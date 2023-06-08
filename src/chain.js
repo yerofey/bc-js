@@ -7,6 +7,7 @@ class Chain {
     this.dataPath = join(dirname(new URL(import.meta.url).pathname), '../data');
     this.balances = {};
     this.length = 0;
+    this.rewardAmount = 1000;
     this.oldLength = 0;
     this.wasUpdated = false;
   }
@@ -102,8 +103,22 @@ class Chain {
   {
     const sender = (type == 'reward' ? 0 : this.getRandomSender());
     const receiver = this.getRandomReceiver();
-    const amount = (type == 'reward' ? 1000 : this.getRandomAmount());
+    const amount = (type == 'reward' ? this.rewardAmount : this.getRandomAmount());
     await this.createTransaction(sender, receiver, amount, type);
+  }
+
+  async sendRewards(customRewardAmount)
+  {
+    const accounts = Object.keys(this.balances) || [];
+    if (accounts.length === 0) {
+      return;
+    }
+
+    for (let accountId of accounts) {
+      await this.createTransaction(0, accountId, (customRewardAmount || this.rewardAmount), 'reward');
+    }
+
+    this.updateBalances();
   }
 
   getRandomSender() {
@@ -176,7 +191,11 @@ class Chain {
 
   async updateBalances()
   {
-    const accounts = Object.keys(this.balances);
+    const accounts = Object.keys(this.balances) || [];
+    if (accounts.length === 0) {
+      return;
+    }
+
     for (let accountId of accounts) {
       try {
         await writeFile(`${this.dataPath}/account_${accountId}.json`, JSON.stringify({
@@ -188,6 +207,7 @@ class Chain {
         console.error(`Failed to update account ${accountId} data:`, err);
       }
     }
+
     this.wasUpdated = true;
   }
 
