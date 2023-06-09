@@ -2,9 +2,12 @@
   "name": "jsbc",
   "version": "1.0.0",
   "main": "index.js",
-	"type": "module",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "alphanum-sort": "^1.0.2"
+  }
 }

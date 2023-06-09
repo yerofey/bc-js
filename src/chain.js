@@ -1,41 +1,64 @@
-import { writeFile, readdir, readFile } from 'fs/promises';
 import { dirname, join } from 'path';
-import { checkAndCreateDirectory, countFilesInFolder } from './utils.js';
+import {
+  checkAndCreateDirectory,
+  getFilesFromFolder,
+  getLatestFileInFolder,
+  getRandom,
+  objectHasAllKeys,
+  readJsonFile,
+  saveJsonFile,
+} from './utils.js';
 
 class Chain {
   constructor() {
     this.dataPath = join(dirname(new URL(import.meta.url).pathname), '../data');
     this.balances = {};
-    this.length = 0;
+    this.data = {};
+    this.coins = 0;
+    this.index = 0;
+    this.oldIndex = 0;
+    this.isChainUpdateRequired = false;
+    this.isFullScanRequired = false;
+    this.isBalanceUpdateRequired = false;
     this.rewardAmount = 1000;
-    this.oldLength = 0;
-    this.wasUpdated = false;
   }
 
   async init(fullScan = false) {
     await checkAndCreateDirectory(this.dataPath);
-    const txCount = await countFilesInFolder(this.dataPath, 'tx_');;
-    this.length = txCount;
-    this.oldLength = txCount;
-    await this.calculateBalances(fullScan);
+    await this.validateChain();
+    await this.calculateBalances((this.isFullScanRequired || fullScan));
   }
 
-  async append(initialCount = 10, appendCount = 1) {
-    if (this.length === 0) {
+  async append(appendCount = 1, initialCount = 10) {
+    if (this.index === 0) {
       await this.startHistory(initialCount);
     } else {
       await this.fillHistory(appendCount);
     }
   }
 
+  async validateChain() {
+    await this.getChainData();
+    const lastTxId = await this.getLastTxId();
+    const txCount = (await getFilesFromFolder(this.dataPath, 'tx_')).length || 0;
+
+    if (lastTxId !== this.index || txCount !== this.index) {
+      this.isFullScanRequired = true;
+      this.isChainUpdateRequired = true;
+      this.isBalanceUpdateRequired = true;
+    }
+
+    this.index = lastTxId;
+    this.oldIndex = lastTxId;
+  }
+
   async createTransaction(sender, receiver, amount, type) {
-    const newTxId = this.length + 1;
+    const newTxId = this.index + 1;
     const currentDate = new Date();
     const fileName = `tx_${newTxId}.json`;
     const filePath = `${this.dataPath}/${fileName}`;
-    const fee = (sender === 0 ? 0 : Math.round(amount * 0.01));
+    const fee = sender === 0 ? 0 : Math.round(amount * 0.001);
     const total = amount + fee;
-
     const currentBalance = this.balances[sender];
 
     if (currentBalance < total && sender > 0) {
@@ -50,28 +73,26 @@ class Chain {
       return;
     }
 
-    const data = {
-      id: newTxId,
-      sender,
-      receiver,
-      amount,
-      fee,
-      type: (type || 'transfer'),
-      timestamp: currentDate.getTime(),
-    };
-    const jsonData = JSON.stringify(data, null, 2);
-
     try {
       // save tx
-      await writeFile(filePath, jsonData);
+      const data = {
+        id: newTxId,
+        sender: parseInt(sender),
+        receiver: parseInt(receiver),
+        amount: parseFloat(amount),
+        fee: parseFloat(fee),
+        type: type || 'transfer',
+        timestamp: currentDate.getTime(),
+      };
+      await saveJsonFile(filePath, data);
       // update sender cached balance
       if (sender > 0) {
-        this.balances[sender] = (currentBalance - total);
+        this.balances[sender] = currentBalance - total;
       }
       // update receiver cached balance
       this.balances[receiver] = (this.balances[receiver] || 0) + amount;
       // increase tx count
-      this.length += 1;
+      this.index += 1;
 
       console.log(
         `#${newTxId}: ${amount} sent from ${sender} to ${receiver} with ${fee} fee`
@@ -81,145 +102,176 @@ class Chain {
     }
   }
 
-  async startHistory(count = 10)
-  {
+  async startHistory(count = 10) {
     for (let i = 1; i <= count; i++) {
       await this.generateDummyTransaction('reward');
     }
-
-    await this.updateBalances();
+    this.isBalanceUpdateRequired = true;
   }
 
-  async fillHistory(count = 1)
-  {
+  async fillHistory(count = 1) {
     for (let i = 1; i <= count; i++) {
       await this.generateDummyTransaction('transfer');
     }
-
-    await this.updateBalances();
+    this.isBalanceUpdateRequired = true;
   }
 
-  async generateDummyTransaction(type)
-  {
-    const sender = (type == 'reward' ? 0 : this.getRandomSender());
-    const receiver = this.getRandomReceiver();
-    const amount = (type == 'reward' ? this.rewardAmount : this.getRandomAmount());
+  async generateDummyTransaction(type) {
+    const sender = type == 'reward' ? 0 : getRandom();
+    const receiver = getRandom();
+    const amount =
+      type == 'reward' ? this.rewardAmount : getRandom();
     await this.createTransaction(sender, receiver, amount, type);
   }
 
-  async sendRewards(customRewardAmount)
-  {
+  async sendRewards(customRewardAmount) {
     const accounts = Object.keys(this.balances) || [];
     if (accounts.length === 0) {
       return;
     }
 
     for (let accountId of accounts) {
-      await this.createTransaction(0, accountId, (customRewardAmount || this.rewardAmount), 'reward');
+      await this.createTransaction(
+        0,
+        accountId,
+        customRewardAmount || this.rewardAmount,
+        'reward'
+      );
     }
 
-    this.updateBalances();
+    this.isBalanceUpdateRequired = true;
   }
 
-  getRandomSender() {
-    return Math.floor(Math.random() * 10) + 1;
+  async getChainData() {
+    const filePath = `${this.dataPath}/chain.json`;
+    let data = await readJsonFile(filePath);
+    if (!objectHasAllKeys(data, [
+      'coins',
+      'index',
+    ])) {
+      this.coins = 0;
+      this.index = 0;
+      this.isChainUpdateRequired = true;
+    }
+    this.coins = data.coins || 0;
+    this.index = data.index || 0;
   }
 
-  getRandomReceiver() {
-    return Math.floor(Math.random() * 10) + 1;
-  }
+  async getLastTxId() {
+    let txId = await getLatestFileInFolder(this.dataPath, 'tx_') || null;
+    if (txId === null) {
+      return 0;
+    }
 
-  getRandomAmount() {
-    return Math.floor(Math.random() * 10) + 1;
+    if (txId.startsWith('tx_')) {
+      txId = txId.slice(3);
+    }
+    if (txId.endsWith('.json')) {
+      txId = txId.substring(0, txId.length - 5);
+    }
+    txId = parseInt(txId);
+
+    return txId;
   }
 
   async calculateBalances(fullScan = false) {
-    if (this.length === 0) {
+    if (this.index === 0) {
       return;
     }
 
-    const files = await readdir(this.dataPath);
+    const files = await getFilesFromFolder(this.dataPath);
 
     if (fullScan) {
-      // get tx files
-      const txFiles = files.filter(file => file.startsWith('tx_'));
+      this.coins = 0;
+      const txFiles = files.filter((file) => file.startsWith('tx_'));
       for (let file of txFiles) {
         const filePath = `${this.dataPath}/${file}`;
-        const fileContent = await readFile(filePath, 'utf8');
-        if (fileContent.length === 0) {
-          return;
-        }
-
-        try {
-          const tx = JSON.parse(fileContent);
-          // console.log('tx', tx);
-          // TODO: check if all required keys exists
+        const tx = await readJsonFile(filePath);
+        if (objectHasAllKeys(tx, [
+          'sender',
+          'receiver',
+          'amount',
+          'fee',
+        ])) {
+          // update sender balance
           if (this.balances[tx.sender] === undefined && tx.sender > 0) {
             this.balances[tx.sender] = 0;
           }
+          if (tx.sender > 0) {
+            this.balances[tx.sender] -= tx.amount + tx.fee;
+          }
+          // update receiver balance
           if (this.balances[tx.receiver] === undefined) {
             this.balances[tx.receiver] = 0;
           }
-          // update sender balance
-          if (tx.sender > 0) {
-            this.balances[tx.sender] -= (tx.amount + tx.fee);
-          }
-          // update receiver balance
           this.balances[tx.receiver] += tx.amount;
-        } catch (err) {
-          console.error(`Error parsing JSON from file ${filePath}:`, err);
+          // update total coins
+          if (tx.sender == 0) {
+            this.coins += tx.amount;
+          }
         }
       }
+      this.index = await this.getLastTxId();
+      this.isChainUpdateRequired = true;
+      this.isBalanceUpdateRequired = true;
     } else {
-      const accountFiles = files.filter(file => file.startsWith('account_'));
+      const accountFiles = files.filter((file) => file.startsWith('account_'));
       for (let file of accountFiles) {
         const filePath = `${this.dataPath}/${file}`;
-        const fileContent = await readFile(filePath, 'utf8');
-        if (fileContent.length === 0) {
-          return;
-        }
-
-        try {
-          const account = JSON.parse(fileContent);
-          this.balances[account.id] = (account.balance || 0);
-        } catch (err) {
-          console.error(`Error parsing JSON from file ${filePath}:`, err);
-        }
+        const account = await readJsonFile(filePath);
+        this.balances[account.id] = account.balance || 0;
       }
     }
   }
 
-  async updateBalances()
-  {
+  async updateBalances() {
     const accounts = Object.keys(this.balances) || [];
     if (accounts.length === 0) {
       return;
     }
 
     for (let accountId of accounts) {
-      try {
-        await writeFile(`${this.dataPath}/account_${accountId}.json`, JSON.stringify({
-          id: accountId,
-          balance: this.balances[accountId],
-          index: this.length,
-        }, null, 2));
-      } catch (err) {
-        console.error(`Failed to update account ${accountId} data:`, err);
-      }
+      const filePath = `${this.dataPath}/account_${accountId}.json`;
+      const data = {
+        id: accountId,
+        balance: this.balances[accountId],
+        index: this.index,
+      };
+      await saveJsonFile(filePath, data);
     }
+  }
 
-    this.wasUpdated = true;
+  async updateChainData() {
+    const filePath = `${this.dataPath}/chain.json`;
+    await saveJsonFile(filePath, {
+      coins: this.coins,
+      index: this.index,
+    });
   }
 
   printChainLength() {
-    console.log(this.length);
+    console.log(this.index);
+  }
+
+  printChainData() {
+    console.log({
+      coins: this.coins,
+      index: this.index,
+    });
   }
 
   async printAccountsBalances() {
-    if (this.oldLength !== this.length && !this.wasUpdated || !this.wasUpdated) {
+    console.log(this.balances);
+  }
+
+  async updateFiles() {
+    if (this.index !== this.oldIndex || this.isBalanceUpdateRequired) {
       await this.updateBalances();
     }
-    console.log(this.balances);
+
+    if (this.index !== this.oldIndex || this.isChainUpdateRequired) {
+      await this.updateChainData();
+    }
   }
 }
 
