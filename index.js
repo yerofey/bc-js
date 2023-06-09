@@ -16,7 +16,7 @@ const main = async () => {
   if (zeroOptions) {
     await chain.append(options.count || 1);
   }
-  await chain.updateFiles();
+  await chain.saveData();
   await chain.printAccountsBalances();
   chain.printChainData();
 };
