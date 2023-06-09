@@ -1,5 +1,6 @@
 import { access, mkdir, readdir, readFile, writeFile } from 'fs/promises';
 import sort from 'alphanum-sort';
+import crypto from 'crypto';
 
 export async function checkAndCreateDirectory(dirPath) {
   try {
@@ -7,6 +8,13 @@ export async function checkAndCreateDirectory(dirPath) {
   } catch (error) {
     await mkdir(dirPath);
   }
+}
+
+export function getObjectHash(object) {
+  const jsonString = JSON.stringify(object);
+  const hash = crypto.createHash('sha1');
+  hash.update(jsonString);
+  return hash.digest('hex');
 }
 
 export async function getFilesFromFolder(folderPath, prefix) {
