@@ -12,7 +12,10 @@ export async function checkAndCreateDirectory(dirPath) {
 export async function getFilesFromFolder(folderPath, prefix) {
   try {
     const files = await readdir(folderPath);
-    const filteredFiles = (prefix !== undefined) ? files.filter(file => file.startsWith(prefix)) : files;
+    const filteredFiles =
+      prefix !== undefined
+        ? files.filter((file) => file.startsWith(prefix))
+        : files;
     return filteredFiles;
   } catch (err) {
     console.error('Error:', err);
@@ -22,9 +25,9 @@ export async function getFilesFromFolder(folderPath, prefix) {
 
 export async function getLatestFileInFolder(folderPath, prefix) {
   let files = await readdir(folderPath);
-  files = files.filter(file => !file.startsWith('.'));
+  files = files.filter((file) => !file.startsWith('.'));
   if (prefix !== undefined) {
-    files = files.filter(file => file.startsWith(prefix));
+    files = files.filter((file) => file.startsWith(prefix));
   }
   files = sort(files, { insensitive: true }).reverse();
   return files[0];
@@ -52,9 +55,5 @@ export async function saveJsonFile(filePath, data) {
 }
 
 export async function objectHasAllKeys(json, requiredKeys) {
-  return requiredKeys.every(key => key in json);
-}
-
-export function getRandom(min = 1, max = 10) {
-  return Math.floor(Math.random() * max) + min;
+  return requiredKeys.every((key) => key in json);
 }
