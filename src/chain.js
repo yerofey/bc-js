@@ -28,7 +28,7 @@ class Chain {
   async init(fullScan = false) {
     await checkAndCreateDirectory(this.dataPath);
     await this.validateChain();
-    await this.calculateBalances((this.isFullScanRequired || fullScan));
+    await this.calculateBalances(this.isFullScanRequired || fullScan);
   }
 
   async append(appendCount = 1, initialCount = 10) {
@@ -42,7 +42,8 @@ class Chain {
   async validateChain() {
     await this.getChainData();
     const lastTxId = await this.getLastTxId();
-    const txCount = (await getFilesFromFolder(this.dataPath, 'tx_')).length || 0;
+    const txCount =
+      (await getFilesFromFolder(this.dataPath, 'tx_')).length || 0;
 
     if (lastTxId !== this.index || txCount !== this.index) {
       this.isFullScanRequired = true;
@@ -57,10 +58,7 @@ class Chain {
   async getChainData() {
     const filePath = `${this.dataPath}/chain.json`;
     let data = await readJsonFile(filePath);
-    if (!objectHasAllKeys(data, [
-      'coins',
-      'index',
-    ])) {
+    if (!objectHasAllKeys(data, ['coins', 'index'])) {
       this.coins = 0;
       this.index = 0;
       this.isChainUpdateRequired = true;
@@ -70,7 +68,7 @@ class Chain {
   }
 
   async getLastTxId() {
-    let txId = await getLatestFileInFolder(this.dataPath, 'tx_') || null;
+    let txId = (await getLatestFileInFolder(this.dataPath, 'tx_')) || null;
     if (txId === null) {
       return 0;
     }
@@ -113,7 +111,12 @@ class Chain {
       return;
     }
 
-    await this.saveTransaction(parseInt(data[0]), parseInt(data[1]), parseFloat(data[2]), 'transfer');
+    await this.saveTransaction(
+      parseInt(data[0]),
+      parseInt(data[1]),
+      parseFloat(data[2]),
+      'transfer'
+    );
     this.forceUpdate();
   }
 
@@ -159,7 +162,9 @@ class Chain {
       this.balances[sender] = parseFloat(currentBalance - total);
     }
     // update receiver cached balance
-    this.balances[receiver] = parseFloat((this.balances[receiver] || 0) + parseFloat(amount));
+    this.balances[receiver] = parseFloat(
+      (this.balances[receiver] || 0) + parseFloat(amount)
+    );
     // increase tx count
     this.index += 1;
     // increase coins count
@@ -201,12 +206,7 @@ class Chain {
 
     const reward = parseInt(customRewardAmount || this.rewardAmount);
     for (let accountId of accounts) {
-      await this.saveTransaction(
-        0,
-        accountId,
-        reward,
-        'reward'
-      );
+      await this.saveTransaction(0, accountId, reward, 'reward');
     }
 
     this.isBalanceUpdateRequired = true;
@@ -227,12 +227,7 @@ class Chain {
       for (let file of txFiles) {
         const filePath = `${this.dataPath}/${file}`;
         const tx = await readJsonFile(filePath);
-        if (objectHasAllKeys(tx, [
-          'sender',
-          'receiver',
-          'amount',
-          'fee',
-        ])) {
+        if (objectHasAllKeys(tx, ['sender', 'receiver', 'amount', 'fee'])) {
           // update sender balance
           if (this.balances[tx.sender] === undefined && tx.sender > 0) {
             this.balances[tx.sender] = 0;
@@ -250,7 +245,7 @@ class Chain {
             totalCoins += tx.amount;
           }
           if (tx.receiver == 0) {
-            totalCoins -= (tx.amount + tx.fee);
+            totalCoins -= tx.amount + tx.fee;
           }
         }
       }
@@ -296,7 +291,7 @@ class Chain {
   printChainData() {
     const table = new Table({
       head: ['Coins', 'Index'],
-      colWidths: [10, 10]
+      colWidths: [10, 10],
     });
     table.push([this.coins, this.index]);
     console.log(table.toString());
@@ -310,7 +305,7 @@ class Chain {
 
     const table = new Table({
       head: ['Account', 'Balance'],
-      colWidths: [10, 10]
+      colWidths: [10, 10],
     });
     for (let accountId of accounts) {
       table.push([accountId, this.balances[accountId]]);
