@@ -3,7 +3,7 @@ import {
   checkAndCreateDirectory,
   getFilesFromFolder,
   getLatestFileInFolder,
-  getRandom,
+  getRandomInt,
   objectHasAllKeys,
   readJsonFile,
   saveJsonFile,
@@ -85,14 +85,45 @@ class Chain {
     return txId;
   }
 
+  async createRandomTransfer(type) {
+    let sender = 0;
+    let receiver = getRandomInt(1, 10);
+    let amount = getRandomInt(1, 100);
+
+    if (type == 'reward') {
+      amount = this.rewardAmount;
+    }
+
+    if (type == 'transfer') {
+      [receiver, sender] = getTwoUniqueRandomInts(1, 10);
+    }
+
+    await this.saveTransaction(sender, receiver, amount, type);
+  }
+
+  async createTransfer(dataString) {
+    if (dataString === undefined || dataString === null) {
+      return;
+    }
+
+    const data = dataString.replace(/\s/g, '').split(',');
+    if (data.length !== 3) {
+      console.error(`Error: transfer requires 3 params: from,to,amount`);
+      return;
+    }
+
+    await this.saveTransaction(parseInt(data[0]), parseInt(data[1]), parseFloat(data[2]), 'transfer');
+    this.forceUpdate();
+  }
+
   async saveTransaction(sender, receiver, amount, type) {
     const newTxId = this.index + 1;
     const currentDate = new Date();
     const fileName = `tx_${newTxId}.json`;
     const filePath = `${this.dataPath}/${fileName}`;
     const fee = sender === 0 ? 0 : Math.round(amount * 0.01);
-    const total = amount + fee;
-    const currentBalance = this.balances[sender];
+    const total = parseFloat(amount + fee);
+    const currentBalance = parseFloat(this.balances[sender] || 0);
 
     if (currentBalance < total && sender > 0) {
       console.log(
@@ -106,45 +137,38 @@ class Chain {
       return;
     }
 
-    try {
-      // save tx
-      const data = {
-        id: newTxId,
-        sender: parseInt(sender),
-        receiver: parseInt(receiver),
-        amount: parseFloat(amount),
-        fee: parseFloat(fee),
-        type: type || 'transfer',
-        timestamp: currentDate.getTime(),
-      };
-      await saveJsonFile(filePath, data);
-      // update sender cached balance
-      if (sender > 0) {
-        this.balances[sender] = currentBalance - total;
-      }
-      // update receiver cached balance
-      this.balances[receiver] = (this.balances[receiver] || 0) + amount;
-      // increase tx count
-      this.index += 1;
-      // increase coins count
-      if (sender == 0) {
-        this.coins += amount;
-      }
-
-      console.log(
-        `#${newTxId}: ${amount} sent from ${sender} to ${receiver} with ${fee} fee`
-      );
-    } catch (err) {
-      console.error('Error writing to file:', err);
+    // save tx
+    const data = {
+      id: newTxId,
+      sender: parseInt(sender),
+      receiver: parseInt(receiver),
+      amount: parseFloat(amount),
+      fee: parseFloat(fee),
+      type: type || 'transfer',
+      timestamp: currentDate.getTime(),
+    };
+    const saved = await saveJsonFile(filePath, data);
+    console.log('saved', saved);
+    // update sender cached balance
+    if (sender > 0) {
+      this.balances[sender] = parseFloat(currentBalance - total);
     }
+    // update receiver cached balance
+    this.balances[receiver] = parseFloat((this.balances[receiver] || 0) + parseFloat(amount));
+    // increase tx count
+    this.index += 1;
+    // increase coins count
+    if (sender == 0) {
+      this.coins += amount;
+    }
+    console.log(
+      `#${newTxId}: ${amount} sent from ${sender} to ${receiver} with ${fee} fee`
+    );
   }
 
-  async createRandomTransfer(type) {
-    const sender = type == 'reward' ? 0 : getRandom();
-    const receiver = getRandom();
-    const amount =
-      type == 'reward' ? this.rewardAmount : getRandom();
-    await this.saveTransaction(sender, receiver, amount, type);
+  forceUpdate() {
+    this.isChainUpdateRequired = true;
+    this.isBalanceUpdateRequired = true;
   }
 
   async startHistory(count = 10) {
