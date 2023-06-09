@@ -43,9 +43,11 @@ export async function readJsonFile(filePath) {
 export async function saveJsonFile(filePath, data) {
   try {
     const jsonString = JSON.stringify(data, null, 2);
-    return await writeFile(filePath, jsonString, 'utf-8');
+    await writeFile(filePath, jsonString, 'utf-8');
+    return true;
   } catch (err) {
     console.error('Error writing file:', err);
+    return false;
   }
 }
 
