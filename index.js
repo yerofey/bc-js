@@ -1,7 +1,4 @@
-import {
-  options,
-  zeroOptions,
-} from './src/options.js';
+import { options, zeroOptions } from './src/options.js';
 import Chain from './src/chain.js';
 
 const main = async () => {
