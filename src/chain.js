@@ -53,6 +53,38 @@ class Chain {
     this.oldIndex = lastTxId;
   }
 
+  async getChainData() {
+    const filePath = `${this.dataPath}/chain.json`;
+    let data = await readJsonFile(filePath);
+    if (!objectHasAllKeys(data, [
+      'coins',
+      'index',
+    ])) {
+      this.coins = 0;
+      this.index = 0;
+      this.isChainUpdateRequired = true;
+    }
+    this.coins = data.coins || 0;
+    this.index = data.index || 0;
+  }
+
+  async getLastTxId() {
+    let txId = await getLatestFileInFolder(this.dataPath, 'tx_') || null;
+    if (txId === null) {
+      return 0;
+    }
+
+    if (txId.startsWith('tx_')) {
+      txId = txId.slice(3);
+    }
+    if (txId.endsWith('.json')) {
+      txId = txId.substring(0, txId.length - 5);
+    }
+    txId = parseInt(txId);
+
+    return txId;
+  }
+
   async createTransaction(sender, receiver, amount, type) {
     const newTxId = this.index + 1;
     const currentDate = new Date();
@@ -107,6 +139,14 @@ class Chain {
     }
   }
 
+  async generateDummyTransaction(type) {
+    const sender = type == 'reward' ? 0 : getRandom();
+    const receiver = getRandom();
+    const amount =
+      type == 'reward' ? this.rewardAmount : getRandom();
+    await this.createTransaction(sender, receiver, amount, type);
+  }
+
   async startHistory(count = 10) {
     for (let i = 1; i <= count; i++) {
       await this.generateDummyTransaction('reward');
@@ -121,14 +161,6 @@ class Chain {
     }
     this.isBalanceUpdateRequired = true;
     this.isChainUpdateRequired = true;
-  }
-
-  async generateDummyTransaction(type) {
-    const sender = type == 'reward' ? 0 : getRandom();
-    const receiver = getRandom();
-    const amount =
-      type == 'reward' ? this.rewardAmount : getRandom();
-    await this.createTransaction(sender, receiver, amount, type);
   }
 
   async sendRewards(customRewardAmount) {
@@ -148,38 +180,6 @@ class Chain {
 
     this.isBalanceUpdateRequired = true;
     this.isChainUpdateRequired = true;
-  }
-
-  async getChainData() {
-    const filePath = `${this.dataPath}/chain.json`;
-    let data = await readJsonFile(filePath);
-    if (!objectHasAllKeys(data, [
-      'coins',
-      'index',
-    ])) {
-      this.coins = 0;
-      this.index = 0;
-      this.isChainUpdateRequired = true;
-    }
-    this.coins = data.coins || 0;
-    this.index = data.index || 0;
-  }
-
-  async getLastTxId() {
-    let txId = await getLatestFileInFolder(this.dataPath, 'tx_') || null;
-    if (txId === null) {
-      return 0;
-    }
-
-    if (txId.startsWith('tx_')) {
-      txId = txId.slice(3);
-    }
-    if (txId.endsWith('.json')) {
-      txId = txId.substring(0, txId.length - 5);
-    }
-    txId = parseInt(txId);
-
-    return txId;
   }
 
   async calculateBalances(fullScan = false) {
@@ -260,10 +260,6 @@ class Chain {
       coins: this.coins,
       index: this.index,
     });
-  }
-
-  printChainLength() {
-    console.log(this.index);
   }
 
   printChainData() {
