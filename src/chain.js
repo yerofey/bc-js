@@ -8,6 +8,7 @@ import {
   readJsonFile,
   saveJsonFile,
 } from './utils.js';
+import Table from 'cli-table3';
 
 class Chain {
   constructor() {
@@ -266,14 +267,28 @@ class Chain {
   }
 
   printChainData() {
-    console.log({
-      coins: this.coins,
-      index: this.index,
+    const table = new Table({
+      head: ['Coins', 'Index'],
+      colWidths: [10, 10]
     });
+    table.push([this.coins, this.index]);
+    console.log(table.toString());
   }
 
   async printAccountsBalances() {
-    console.log(this.balances);
+    const accounts = Object.keys(this.balances) || [];
+    if (accounts.length === 0) {
+      return;
+    }
+
+    const table = new Table({
+      head: ['Account', 'Balance'],
+      colWidths: [10, 10]
+    });
+    for (let accountId of accounts) {
+      table.push([accountId, this.balances[accountId]]);
+    }
+    console.log(table.toString());
   }
 
   async updateFiles() {
