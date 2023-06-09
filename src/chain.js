@@ -217,6 +217,9 @@ class Chain {
           if (tx.sender == 0) {
             totalCoins += tx.amount;
           }
+          if (tx.receiver == 0) {
+            totalCoins -= (tx.amount + tx.fee);
+          }
         }
       }
       this.coins = totalCoins;
