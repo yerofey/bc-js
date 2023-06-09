@@ -85,7 +85,7 @@ class Chain {
     return txId;
   }
 
-  async createTransaction(sender, receiver, amount, type) {
+  async saveTransaction(sender, receiver, amount, type) {
     const newTxId = this.index + 1;
     const currentDate = new Date();
     const fileName = `tx_${newTxId}.json`;
@@ -139,17 +139,17 @@ class Chain {
     }
   }
 
-  async generateDummyTransaction(type) {
+  async createRandomTransfer(type) {
     const sender = type == 'reward' ? 0 : getRandom();
     const receiver = getRandom();
     const amount =
       type == 'reward' ? this.rewardAmount : getRandom();
-    await this.createTransaction(sender, receiver, amount, type);
+    await this.saveTransaction(sender, receiver, amount, type);
   }
 
   async startHistory(count = 10) {
     for (let i = 1; i <= count; i++) {
-      await this.generateDummyTransaction('reward');
+      await this.createRandomTransfer('reward');
     }
     this.isBalanceUpdateRequired = true;
     this.isChainUpdateRequired = true;
@@ -157,7 +157,7 @@ class Chain {
 
   async fillHistory(count = 1) {
     for (let i = 1; i <= count; i++) {
-      await this.generateDummyTransaction('transfer');
+      await this.createRandomTransfer('transfer');
     }
     this.isBalanceUpdateRequired = true;
     this.isChainUpdateRequired = true;
@@ -172,7 +172,7 @@ class Chain {
     const reward = parseInt(customRewardAmount || this.rewardAmount);
     console.log('reward', reward);
     for (let accountId of accounts) {
-      await this.createTransaction(
+      await this.saveTransaction(
         0,
         accountId,
         reward,
