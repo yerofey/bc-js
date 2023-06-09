@@ -16,7 +16,11 @@ program.option(
   '-s, --scan',
   'Run full transactions scan'
 );
+program.option(
+  '-t, --transfer <data>',
+  'Create transfer transaction (format: from,to,amount)'
+);
 program.parse();
 
-const options = program.opts();
-export default options;
+export const options = program.opts();
+export const zeroOptions = Object.keys(options).length === 0;
