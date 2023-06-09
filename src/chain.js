@@ -4,6 +4,7 @@ import {
   getFilesFromFolder,
   getLatestFileInFolder,
   getRandomInt,
+  getTwoUniqueRandomInts,
   objectHasAllKeys,
   readJsonFile,
   saveJsonFile,
@@ -148,7 +149,11 @@ class Chain {
       timestamp: currentDate.getTime(),
     };
     const saved = await saveJsonFile(filePath, data);
-    console.log('saved', saved);
+    if (!saved) {
+      console.error(`Failed to save transaction`);
+      return;
+    }
+
     // update sender cached balance
     if (sender > 0) {
       this.balances[sender] = parseFloat(currentBalance - total);
@@ -161,6 +166,7 @@ class Chain {
     if (sender == 0) {
       this.coins += amount;
     }
+
     console.log(
       `#${newTxId}: ${amount} sent from ${sender} to ${receiver} with ${fee} fee`
     );
@@ -194,7 +200,6 @@ class Chain {
     }
 
     const reward = parseInt(customRewardAmount || this.rewardAmount);
-    console.log('reward', reward);
     for (let accountId of accounts) {
       await this.saveTransaction(
         0,
