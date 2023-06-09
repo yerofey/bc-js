@@ -3,6 +3,7 @@ import {
   checkAndCreateDirectory,
   getFilesFromFolder,
   getLatestFileInFolder,
+  getObjectHash,
   getRandomInt,
   getTwoUniqueRandomInts,
   objectHasAllKeys,
@@ -15,13 +16,14 @@ class Chain {
   constructor() {
     this.dataPath = join(dirname(new URL(import.meta.url).pathname), '../data');
     this.balances = {};
-    this.data = {};
+    this.accountsHash = '';
     this.coins = 0;
     this.index = 0;
     this.oldIndex = 0;
+    this.isBalanceAlreadySaved = false;
     this.isChainUpdateRequired = false;
     this.isFullScanRequired = false;
-    this.isBalanceUpdateRequired = false;
+    this.isAccountsUpdateRequired = false;
     this.rewardAmount = 1000;
   }
 
@@ -41,14 +43,22 @@ class Chain {
 
   async validateChain() {
     await this.getChainData();
+    await this.getAccountsData();
+
     const lastTxId = await this.getLastTxId();
     const txCount =
       (await getFilesFromFolder(this.dataPath, 'tx_')).length || 0;
+    const accountsFilesHash = getObjectHash(this.balances);
 
-    if (lastTxId !== this.index || txCount !== this.index) {
+    if (
+      lastTxId !== this.index ||
+      txCount !== this.index ||
+      accountsFilesHash !== this.accountsHash
+    ) {
+      this.accountsHash = accountsFilesHash;
       this.isFullScanRequired = true;
       this.isChainUpdateRequired = true;
-      this.isBalanceUpdateRequired = true;
+      this.isAccountsUpdateRequired = true;
     }
 
     this.index = lastTxId;
@@ -58,13 +68,32 @@ class Chain {
   async getChainData() {
     const filePath = `${this.dataPath}/chain.json`;
     let data = await readJsonFile(filePath);
-    if (!objectHasAllKeys(data, ['coins', 'index'])) {
+    if (!objectHasAllKeys(data, ['coins', 'index', 'accountsHash'])) {
+      this.accountsHash = '';
       this.coins = 0;
       this.index = 0;
       this.isChainUpdateRequired = true;
     }
+    this.accountsHash = data.accountsHash || '';
     this.coins = data.coins || 0;
     this.index = data.index || 0;
+  }
+
+  async getAccountsData() {
+    const files = await getFilesFromFolder(this.dataPath);
+    const accountFiles = files.filter((file) => file.startsWith('account_'));
+
+    if (accountFiles.length === 0) {
+      return;
+    }
+
+    for (let file of accountFiles) {
+      const filePath = `${this.dataPath}/${file}`;
+      const account = await readJsonFile(filePath);
+      this.balances[account.id] = account.balance || 0;
+    }
+
+    this.isBalanceAlreadySaved = true;
   }
 
   async getLastTxId() {
@@ -165,12 +194,13 @@ class Chain {
     this.balances[receiver] = parseFloat(
       (this.balances[receiver] || 0) + parseFloat(amount)
     );
-    // increase tx count
+    // update tx index
     this.index += 1;
-    // increase coins count
+    // update coins count
     if (sender == 0) {
-      this.coins += amount;
+      this.coins += parseFloat(amount);
     }
+    this.coins -= parseFloat(fee);
 
     console.log(
       `#${newTxId}: ${amount} sent from ${sender} to ${receiver} with ${fee} fee`
@@ -178,15 +208,16 @@ class Chain {
   }
 
   forceUpdate() {
+    this.isBalanceAlreadySaved = false;
     this.isChainUpdateRequired = true;
-    this.isBalanceUpdateRequired = true;
+    this.isAccountsUpdateRequired = true;
   }
 
   async startHistory(count = 10) {
     for (let i = 1; i <= count; i++) {
       await this.createRandomTransfer('reward');
     }
-    this.isBalanceUpdateRequired = true;
+    this.isAccountsUpdateRequired = true;
     this.isChainUpdateRequired = true;
   }
 
@@ -194,7 +225,7 @@ class Chain {
     for (let i = 1; i <= count; i++) {
       await this.createRandomTransfer('transfer');
     }
-    this.isBalanceUpdateRequired = true;
+    this.isAccountsUpdateRequired = true;
     this.isChainUpdateRequired = true;
   }
 
@@ -209,19 +240,21 @@ class Chain {
       await this.saveTransaction(0, accountId, reward, 'reward');
     }
 
-    this.isBalanceUpdateRequired = true;
+    this.isAccountsUpdateRequired = true;
     this.isChainUpdateRequired = true;
   }
 
   async calculateBalances(fullScan = false) {
-    if (this.index === 0) {
+    if (this.index === 0 || (this.isBalanceAlreadySaved && !fullScan)) {
       return;
     }
 
     const files = await getFilesFromFolder(this.dataPath);
 
     if (fullScan) {
+      this.balances = {};
       this.coins = 0;
+      this.index = 0;
       let totalCoins = 0;
       const txFiles = files.filter((file) => file.startsWith('tx_'));
       for (let file of txFiles) {
@@ -233,37 +266,33 @@ class Chain {
             this.balances[tx.sender] = 0;
           }
           if (tx.sender > 0) {
-            this.balances[tx.sender] -= tx.amount + tx.fee;
+            this.balances[tx.sender] -= parseFloat(tx.amount + tx.fee);
           }
           // update receiver balance
           if (this.balances[tx.receiver] === undefined) {
             this.balances[tx.receiver] = 0;
           }
-          this.balances[tx.receiver] += tx.amount;
+          this.balances[tx.receiver] += parseFloat(tx.amount);
           // update total coins
           if (tx.sender == 0) {
-            totalCoins += tx.amount;
+            totalCoins += parseFloat(tx.amount);
           }
           if (tx.receiver == 0) {
-            totalCoins -= tx.amount + tx.fee;
+            totalCoins -= parseFloat(tx.amount + tx.fee);
           }
+          totalCoins -= parseFloat(tx.fee);
         }
       }
       this.coins = totalCoins;
       this.index = await this.getLastTxId();
       this.isChainUpdateRequired = true;
-      this.isBalanceUpdateRequired = true;
+      this.isAccountsUpdateRequired = true;
     } else {
-      const accountFiles = files.filter((file) => file.startsWith('account_'));
-      for (let file of accountFiles) {
-        const filePath = `${this.dataPath}/${file}`;
-        const account = await readJsonFile(filePath);
-        this.balances[account.id] = account.balance || 0;
-      }
+      await this.getAccountsData();
     }
   }
 
-  async updateBalances() {
+  async saveAccounts() {
     const accounts = Object.keys(this.balances) || [];
     if (accounts.length === 0) {
       return;
@@ -280,9 +309,10 @@ class Chain {
     }
   }
 
-  async updateChainData() {
+  async saveChainData() {
     const filePath = `${this.dataPath}/chain.json`;
     await saveJsonFile(filePath, {
+      accountsHash: getObjectHash(this.balances),
       coins: this.coins,
       index: this.index,
     });
@@ -313,13 +343,13 @@ class Chain {
     console.log(table.toString());
   }
 
-  async updateFiles() {
-    if (this.index !== this.oldIndex || this.isBalanceUpdateRequired) {
-      await this.updateBalances();
+  async saveData() {
+    if (this.index !== this.oldIndex || this.isAccountsUpdateRequired) {
+      await this.saveAccounts();
     }
 
     if (this.index !== this.oldIndex || this.isChainUpdateRequired) {
-      await this.updateChainData();
+      await this.saveChainData();
     }
   }
 }
