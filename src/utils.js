@@ -57,3 +57,19 @@ export async function saveJsonFile(filePath, data) {
 export async function objectHasAllKeys(json, requiredKeys) {
   return requiredKeys.every((key) => key in json);
 }
+
+export function getRandomInt(min, max) {
+  min = Math.ceil(min);
+  max = Math.floor(max);
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+export function getTwoUniqueRandomInts(min, max) {
+  const first = getRandomInt(min, max);
+  let second;
+  do {
+    second = getRandomInt(min, max);
+  } while (first === second);
+
+  return [first, second];
+}
