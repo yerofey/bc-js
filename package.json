@@ -9,6 +9,7 @@
   "license": "MIT",
   "dependencies": {
     "alphanum-sort": "^1.0.2",
-    "cli-table3": "^0.6.3"
+    "cli-table3": "^0.6.3",
+    "commander": "^10.0.1"
   }
 }

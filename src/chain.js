@@ -90,7 +90,7 @@ class Chain {
     const currentDate = new Date();
     const fileName = `tx_${newTxId}.json`;
     const filePath = `${this.dataPath}/${fileName}`;
-    const fee = sender === 0 ? 0 : Math.round(amount * 0.001);
+    const fee = sender === 0 ? 0 : Math.round(amount * 0.01);
     const total = amount + fee;
     const currentBalance = this.balances[sender];
 
@@ -169,11 +169,13 @@ class Chain {
       return;
     }
 
+    const reward = parseInt(customRewardAmount || this.rewardAmount);
+    console.log('reward', reward);
     for (let accountId of accounts) {
       await this.createTransaction(
         0,
         accountId,
-        customRewardAmount || this.rewardAmount,
+        reward,
         'reward'
       );
     }
