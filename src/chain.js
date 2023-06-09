@@ -93,6 +93,10 @@ class Chain {
       this.balances[receiver] = (this.balances[receiver] || 0) + amount;
       // increase tx count
       this.index += 1;
+      // increase coins count
+      if (sender == 0) {
+        this.coins += amount;
+      }
 
       console.log(
         `#${newTxId}: ${amount} sent from ${sender} to ${receiver} with ${fee} fee`
@@ -107,6 +111,7 @@ class Chain {
       await this.generateDummyTransaction('reward');
     }
     this.isBalanceUpdateRequired = true;
+    this.isChainUpdateRequired = true;
   }
 
   async fillHistory(count = 1) {
@@ -114,6 +119,7 @@ class Chain {
       await this.generateDummyTransaction('transfer');
     }
     this.isBalanceUpdateRequired = true;
+    this.isChainUpdateRequired = true;
   }
 
   async generateDummyTransaction(type) {
@@ -140,6 +146,7 @@ class Chain {
     }
 
     this.isBalanceUpdateRequired = true;
+    this.isChainUpdateRequired = true;
   }
 
   async getChainData() {
@@ -183,6 +190,7 @@ class Chain {
 
     if (fullScan) {
       this.coins = 0;
+      let totalCoins = 0;
       const txFiles = files.filter((file) => file.startsWith('tx_'));
       for (let file of txFiles) {
         const filePath = `${this.dataPath}/${file}`;
@@ -207,10 +215,11 @@ class Chain {
           this.balances[tx.receiver] += tx.amount;
           // update total coins
           if (tx.sender == 0) {
-            this.coins += tx.amount;
+            totalCoins += tx.amount;
           }
         }
       }
+      this.coins = totalCoins;
       this.index = await this.getLastTxId();
       this.isChainUpdateRequired = true;
       this.isBalanceUpdateRequired = true;
