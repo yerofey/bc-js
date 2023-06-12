@@ -121,9 +121,6 @@ class Chain {
     }
 
     if (this.useDatabase) {
-      // get total amount of coins
-      const totalCoins = await this.getDbCoins();
-      this.coins = totalCoins;
       // get latest transaction index
       const latestIndex = await this.getLastTxId() || 0;
       this.index = latestIndex;
@@ -152,7 +149,9 @@ class Chain {
       const accounts = await this.getDbAccountsBalances() || [];
       if (accounts.length > 0) {
         for (let account of accounts) {
-          this.balances[parseInt(account.accountId)] = account.balance || 0;
+          const accountBalance = account.balance || 0;
+          this.balances[parseInt(account.accountId)] = accountBalance;
+          this.coins += accountBalance;
         }
       } else {
         log(chalk.yellow('No accounts found'));
@@ -180,7 +179,7 @@ class Chain {
                 $cond: [
                   { $eq: ['$sender', 0] },
                   { $subtract: ['$amount', '$fee'] },
-                  '$amount',
+                  { $subtract: ['$amount', { $multiply: ['$fee', 1] }] },
                 ],
               },
             },
@@ -250,8 +249,19 @@ class Chain {
       const receiver = { $ne: 0 };
       totalAmount = await this.db.aggregate(
         this.DB_TRANSACTIONS,
-        { $match: { sender, receiver } },
-        { $group: { _id: null, totalAmount: { $sum: "$amount" } } },
+        {
+          $match: { sender, receiver },
+        },
+        {
+          $group: {
+            _id: null,
+            totalAmount: {
+              $sum: {
+                $subtract: ['$amount', '$fee'],
+              },
+            },
+          },
+        },
       ) || 0;
     } catch (err) {
       log(chalk.red(`Failed to get total amount of coins: ${err}`));
