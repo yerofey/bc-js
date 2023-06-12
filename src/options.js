@@ -25,8 +25,8 @@ program.option(
   'Run full transactions scan'
 );
 program.option(
-  '-t, --transfer <data>',
-  'Create transfer transaction (format: from,to,amount)'
+  '-t, --transfer',
+  'Create new transaction'
 );
 program.parse();
 

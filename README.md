@@ -30,8 +30,8 @@ $ node index.js -a 1234
 # send rewards to everyone
 $ node index.js -r
 
-# create a custom transaction (account 1 sends 5,000 coins to account 4)
-$ node index.js -t 1,4,5000
+# create new transaction
+$ node index.js -t
 
 # run full scan
 $ node index.js -s

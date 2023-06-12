@@ -15,6 +15,7 @@ import {
 } from './utils.js';
 import Table from 'cli-table3';
 import chalk from 'chalk';
+import inquirer from 'inquirer';
 import DB from './db.js';
 
 class Chain {
@@ -123,7 +124,7 @@ class Chain {
 
     if (this.useDatabase) {
       // get latest transaction index
-      const latestIndex = await this.getLastTxId() || 0;
+      const latestIndex = (await this.getLastTxId()) || 0;
       this.index = latestIndex;
     }
   }
@@ -147,7 +148,7 @@ class Chain {
     }
 
     if (this.useDatabase) {
-      const accounts = await this.getDbAccountsBalances() || [];
+      const accounts = (await this.getDbAccountsBalances()) || [];
       if (accounts.length > 0) {
         for (let account of accounts) {
           const accountBalance = account.balance || 0;
@@ -166,7 +167,8 @@ class Chain {
     try {
       let accountBalances;
 
-      if (getSavedBalances) { // faster and more easier way
+      if (getSavedBalances) {
+        // faster and more easier way
         const collection = this.db.connection.collection(this.DB_ACCOUNTS);
         const pipeline = [
           {
@@ -207,7 +209,11 @@ class Chain {
     if (this.useDatabase) {
       try {
         const collection = this.db.connection.collection(this.DB_TRANSACTIONS);
-        const result = await collection.find().sort({ id: -1 }).limit(1).toArray();
+        const result = await collection
+          .find()
+          .sort({ id: -1 })
+          .limit(1)
+          .toArray();
         if (result.length > 0) {
           txId = result[0].id;
         }
@@ -219,29 +225,30 @@ class Chain {
     return txId;
   }
 
-  async getDbCoins()
-  {
+  async getDbCoins() {
     let totalAmount = 0;
 
     try {
       const sender = 0;
       const receiver = { $ne: 0 };
       const collection = this.db.connection.collection(this.DB_TRANSACTIONS);
-      const result = await collection.aggregate([
-        {
-          $match: { sender, receiver },
-        },
-        {
-          $group: {
-            _id: null,
-            totalAmount: {
-              $sum: {
-                $subtract: ['$amount', '$fee'],
+      const result = await collection
+        .aggregate([
+          {
+            $match: { sender, receiver },
+          },
+          {
+            $group: {
+              _id: null,
+              totalAmount: {
+                $sum: {
+                  $subtract: ['$amount', '$fee'],
+                },
               },
             },
           },
-        }
-      ]).toArray();
+        ])
+        .toArray();
       totalAmount = result.length > 0 ? result[0].totalAmount : 0;
     } catch (err) {
       log(chalk.red(`Failed to get total amount of coins: ${err}`));
@@ -266,24 +273,47 @@ class Chain {
     await this.saveTransaction(sender, receiver, amount, type);
   }
 
-  async createTransfer(dataString) {
-    if (dataString === undefined || dataString === null) {
-      return;
-    }
+  async createTransfer() {
+    log(chalk.green(`Creating new transaction`));
+    try {
+      const input = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'sender',
+          message: 'Sender:',
+          default: 0,
+        },
+        {
+          type: 'input',
+          name: 'receiver',
+          message: 'Receiver:',
+          default: 0,
+        },
+        {
+          type: 'input',
+          name: 'amount',
+          message: 'Amount:',
+          default: 0,
+        },
+        {
+          type: 'input',
+          name: 'type',
+          message: 'Type:',
+          default: 'transfer',
+        },
+      ]);
 
-    const data = dataString.replace(/\s/g, '').split(',');
-    if (data.length < 3) {
-      log(chalk.red(`Error: transfer requires 3 params: from,to,amount`));
-      return;
-    }
+      await this.saveTransaction(
+        parseInt(input.sender),
+        parseInt(input.receiver),
+        parseFloat(input.amount),
+        input.type || 'transfer'
+      );
 
-    await this.saveTransaction(
-      parseInt(data[0]),
-      parseInt(data[1]),
-      parseFloat(data[2]),
-      data[3] || 'transfer'
-    );
-    this.forceUpdate();
+      this.forceUpdate();
+    } catch (err) {
+      log(chalk.red(`Failed to create transaction`));
+    }
   }
 
   async saveTransaction(sender, receiver, amount, type) {
@@ -296,7 +326,11 @@ class Chain {
     const currentBalance = parseFloat(this.balances[sender] || 0);
 
     if (currentBalance < total && sender > 0) {
-      log(chalk.red(`Error: ${sender}'s balance is too low. Current balance: ${currentBalance}. Required amount: ${total}`));
+      log(
+        chalk.red(
+          `Error: ${sender}'s balance is too low. Current balance: ${currentBalance}. Required amount: ${total}`
+        )
+      );
       return;
     }
 
@@ -340,7 +374,8 @@ class Chain {
       this.balances[sender] = parseFloat(currentBalance - total);
     }
     // update receiver cached balance
-    this.balances[receiver] = parseFloat(this.balances[receiver] || 0) + parseFloat(amount);
+    this.balances[receiver] =
+      parseFloat(this.balances[receiver] || 0) + parseFloat(amount);
     // update tx index
     this.index += 1;
     // update coins count
@@ -350,11 +385,19 @@ class Chain {
     this.coins -= parseFloat(fee);
 
     if (this.useFiles && saved) {
-      log(chalk.green(`Tx #${newTxId} saved: ${amount} coins sent from ${sender} to ${receiver} with ${fee} fee`));
+      log(
+        chalk.green(
+          `Tx #${newTxId} saved: ${amount} coins sent from ${sender} to ${receiver} with ${fee} fee`
+        )
+      );
     }
 
     if (this.useDatabase) {
-      log(chalk.cyan(`Tx #${newTxId} queued: ${amount} coins to be sent from ${sender} to ${receiver} with ${fee} fee`));
+      log(
+        chalk.cyan(
+          `Tx #${newTxId} queued: ${amount} coins to be sent from ${sender} to ${receiver} with ${fee} fee`
+        )
+      );
     }
   }
 
@@ -451,9 +494,9 @@ class Chain {
 
   async saveAccounts() {
     const accounts = Object.keys(this.balances) || [];
-      if (accounts.length === 0) {
-        return;
-      }
+    if (accounts.length === 0) {
+      return;
+    }
 
     if (this.useFiles) {
       for (let accountId of accounts) {
@@ -470,11 +513,11 @@ class Chain {
     if (this.useDatabase) {
       for (let accountId of this.touchedAccounts) {
         const filter = { id: parseInt(accountId) };
-        const update = { $set:
-          {
+        const update = {
+          $set: {
             balance: this.balances[parseInt(accountId)] || 0,
-            index: this.index
-          }
+            index: this.index,
+          },
         };
         await this.db.updateOrInsert(this.DB_ACCOUNTS, filter, update);
       }
@@ -512,7 +555,7 @@ class Chain {
       ],
     });
     table.push([this.coins, this.index]);
-    console.log(table.toString());
+    log(table.toString());
   }
 
   async printAccountsBalances() {
@@ -524,14 +567,18 @@ class Chain {
     const table = new Table({
       head: ['Account', 'Balance'],
       colWidths: [
-        this.getTableColumnWidth(getMaxArrayValue(Object.keys(this.balances)).toFixed(4)),
-        this.getTableColumnWidth(getMaxArrayValue(Object.values(this.balances)).toFixed(4)),
+        this.getTableColumnWidth(
+          getMaxArrayValue(Object.keys(this.balances)).toFixed(4)
+        ),
+        this.getTableColumnWidth(
+          getMaxArrayValue(Object.values(this.balances)).toFixed(4)
+        ),
       ],
     });
     for (let accountId of accounts) {
       table.push([accountId, this.balances[accountId]]);
     }
-    console.log(table.toString());
+    log(table.toString());
   }
 
   async savePendingTransactions() {
@@ -542,9 +589,18 @@ class Chain {
     // TODO: split on chunks if array is too big
 
     try {
-      const result = await this.db.insert(this.DB_TRANSACTIONS, this.pendingTransactions);
+      const result = await this.db.insert(
+        this.DB_TRANSACTIONS,
+        this.pendingTransactions
+      );
       if (result.insertedCount) {
-        log(chalk.green(`${result.insertedCount}/${this.pendingTransactions.length} transaction${result.insertedCount > 1 ? 's' : ''} saved into DB`));
+        log(
+          chalk.green(
+            `${result.insertedCount}/${
+              this.pendingTransactions.length
+            } transaction${result.insertedCount > 1 ? 's' : ''} saved into DB`
+          )
+        );
         this.pendingTransactions = [];
       }
     } catch (err) {
@@ -553,15 +609,31 @@ class Chain {
   }
 
   async eraseData() {
-    log(chalk.yellow(`Chain data will be erased in 5 seconds, you can stop it now`));
-    await sleep(5000);
-    log(chalk.blue(`Erase is started`));
-    await this.db.clear(this.DB_ACCOUNTS);
-    await this.db.clear(this.DB_TRANSACTIONS);
-    log(chalk.blue(`Erase is finished`));
-    this.balances = [];
-    this.coins = 0;
-    this.index = 0;
+    log(chalk.yellow(`Erasing the chain data`));
+    try {
+      const input = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'sure',
+          message: 'Do you really want to erase the data?',
+          default: true,
+        },
+      ]);
+
+      if (input.sure) {
+        log(chalk.blue(`Erase is confirmed`));
+        await this.db.clear(this.DB_ACCOUNTS);
+        await this.db.clear(this.DB_TRANSACTIONS);
+      } else {
+        log(chalk.blue(`Erase is declined`));
+      }
+
+      this.balances = [];
+      this.coins = 0;
+      this.index = 0;
+    } catch (err) {
+      log(chalk.red(`Failed to erase the chain data`));
+    }
   }
 
   async saveData() {
