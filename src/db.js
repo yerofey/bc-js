@@ -76,17 +76,6 @@ class DB {
     }
   }
 
-  async aggregate(collectionName, match, group) {
-    try {
-      const collection = this.connection.collection(collectionName);
-      const result = await collection.aggregate([match,group]).toArray();
-      const totalSum = result.length > 0 ? result[0].totalAmount : 0;
-      return totalSum;
-    } catch (err) {
-      console.error('Error calculating summary:', err);
-    }
-  }
-
   async clear(collectionName) {
     try {
       const collection = this.connection.collection(collectionName);

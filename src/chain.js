@@ -6,6 +6,7 @@ import {
   getObjectHash,
   getRandomInt,
   getTwoUniqueRandomInts,
+  getMaxArrayValue,
   objectHasAllKeys,
   readJsonFile,
   saveJsonFile,
@@ -150,7 +151,7 @@ class Chain {
       if (accounts.length > 0) {
         for (let account of accounts) {
           const accountBalance = account.balance || 0;
-          this.balances[parseInt(account.accountId)] = accountBalance;
+          this.balances[parseInt(account.id)] = accountBalance;
           this.coins += accountBalance;
         }
       } else {
@@ -161,46 +162,24 @@ class Chain {
     }
   }
 
-  async getDbAccountsBalances() {
+  async getDbAccountsBalances(getSavedBalances = true) {
     try {
-      const collection = this.db.connection.collection(this.DB_TRANSACTIONS);
-      const pipeline = [
-        {
-          $group: {
-            _id: {
-              $cond: [
-                { $eq: ['$sender', 0] },
-                '$receiver',
-                '$sender',
-              ],
-            },
-            balance: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$sender', 0] },
-                  { $subtract: ['$amount', '$fee'] },
-                  { $subtract: ['$amount', { $multiply: ['$fee', 1] }] },
-                ],
-              },
+      let accountBalances;
+
+      if (getSavedBalances) { // faster and more easier way
+        const collection = this.db.connection.collection(this.DB_ACCOUNTS);
+        const pipeline = [
+          {
+            $project: {
+              _id: 0,
+              id: 1,
+              balance: 1,
             },
           },
-        },
-        {
-          $project: {
-            _id: 0,
-            accountId: '$_id',
-            balance: {
-              $round: ['$balance', 4],
-            },
-          },
-        },
-        {
-          $sort: {
-            accountId: 1,
-          },
-        },
-      ];
-      const accountBalances = await collection.aggregate(pipeline).toArray();
+        ];
+        accountBalances = await collection.aggregate(pipeline).toArray();
+      }
+
       return accountBalances;
     } catch (err) {
       log(chalk.red(`Failed to calculate accounts balances: ${err}`));
@@ -247,8 +226,8 @@ class Chain {
     try {
       const sender = 0;
       const receiver = { $ne: 0 };
-      totalAmount = await this.db.aggregate(
-        this.DB_TRANSACTIONS,
+      const collection = this.db.connection.collection(this.DB_TRANSACTIONS);
+      const result = await collection.aggregate([
         {
           $match: { sender, receiver },
         },
@@ -261,8 +240,9 @@ class Chain {
               },
             },
           },
-        },
-      ) || 0;
+        }
+      ]).toArray();
+      totalAmount = result.length > 0 ? result[0].totalAmount : 0;
     } catch (err) {
       log(chalk.red(`Failed to get total amount of coins: ${err}`));
     }
@@ -292,7 +272,7 @@ class Chain {
     }
 
     const data = dataString.replace(/\s/g, '').split(',');
-    if (data.length !== 3) {
+    if (data.length < 3) {
       log(chalk.red(`Error: transfer requires 3 params: from,to,amount`));
       return;
     }
@@ -301,7 +281,7 @@ class Chain {
       parseInt(data[0]),
       parseInt(data[1]),
       parseFloat(data[2]),
-      'transfer'
+      data[3] || 'transfer'
     );
     this.forceUpdate();
   }
@@ -512,10 +492,24 @@ class Chain {
     }
   }
 
+  getTableColumnWidth(value) {
+    const columnWidth = value.toString().length;
+    const minimumWidth = 10;
+
+    if (columnWidth < 8) {
+      return minimumWidth;
+    }
+
+    return columnWidth + 2;
+  }
+
   printChainData() {
     const table = new Table({
       head: ['Coins', 'Index'],
-      colWidths: [10, 10],
+      colWidths: [
+        this.getTableColumnWidth(this.coins.toFixed(4)),
+        this.getTableColumnWidth(this.index),
+      ],
     });
     table.push([this.coins, this.index]);
     console.log(table.toString());
@@ -529,7 +523,10 @@ class Chain {
 
     const table = new Table({
       head: ['Account', 'Balance'],
-      colWidths: [10, 10],
+      colWidths: [
+        this.getTableColumnWidth(getMaxArrayValue(Object.keys(this.balances)).toFixed(4)),
+        this.getTableColumnWidth(getMaxArrayValue(Object.values(this.balances)).toFixed(4)),
+      ],
     });
     for (let accountId of accounts) {
       table.push([accountId, this.balances[accountId]]);

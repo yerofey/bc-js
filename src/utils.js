@@ -66,6 +66,10 @@ export async function objectHasAllKeys(json, requiredKeys) {
   return requiredKeys.every((key) => key in json);
 }
 
+export function getMaxArrayValue(array) {
+  return Math.max(...array.map(element => element));
+}
+
 export function getRandomInt(min, max) {
   min = Math.ceil(min);
   max = Math.floor(max);
