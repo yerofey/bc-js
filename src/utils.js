@@ -81,3 +81,9 @@ export function getTwoUniqueRandomInts(min, max) {
 
   return [first, second];
 }
+
+export function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+export const log = console.log;

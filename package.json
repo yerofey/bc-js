@@ -9,7 +9,10 @@
   "license": "MIT",
   "dependencies": {
     "alphanum-sort": "^1.0.2",
+    "chalk": "^5.2.0",
     "cli-table3": "^0.6.3",
-    "commander": "^10.0.1"
+    "commander": "^10.0.1",
+    "dotenv": "^16.1.4",
+    "mongodb": "^5.6.0"
   }
 }

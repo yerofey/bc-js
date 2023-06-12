@@ -1,12 +1,20 @@
 import { program } from 'commander';
 
 program.option(
+  '-a, --airdrop <amount>',
+  'Send custom amount to everyone'
+);
+program.option(
+  '-b, --balances',
+  'List accounts with balances'
+);
+program.option(
   '-c, --count <count>',
   'New transactions count'
 );
 program.option(
-  '-a, --airdrop <amount>',
-  'Send custom amount to everyone'
+  '-e, --erase',
+  'Erase chain db data'
 );
 program.option(
   '-r, --reward',

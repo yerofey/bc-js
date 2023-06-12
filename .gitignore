@@ -2,3 +2,4 @@ _/
 data/
 node_modules/
 .editorconfig
+.env

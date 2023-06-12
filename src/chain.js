@@ -9,26 +9,59 @@ import {
   objectHasAllKeys,
   readJsonFile,
   saveJsonFile,
+  sleep,
+  log,
 } from './utils.js';
 import Table from 'cli-table3';
+import chalk from 'chalk';
+import DB from './db.js';
 
 class Chain {
-  constructor() {
+  constructor(useDb = false) {
     this.dataPath = join(dirname(new URL(import.meta.url).pathname), '../data');
+    this.options = {};
     this.balances = {};
+    this.feeAmount = 1; // %
+    this.rewardAmount = 1000;
     this.accountsHash = '';
     this.coins = 0;
     this.index = 0;
     this.oldIndex = 0;
+    this.pendingTransactions = [];
+    this.touchedAccounts = [];
     this.isBalanceAlreadySaved = false;
     this.isChainUpdateRequired = false;
     this.isFullScanRequired = false;
     this.isAccountsUpdateRequired = false;
-    this.rewardAmount = 1000;
+    this.useDatabase = useDb;
+    this.useFiles = !useDb;
+    this.isDbConnected = false;
+
+    if (useDb) {
+      this.db = new DB();
+      this.DB_ACCOUNTS = 'test__accounts';
+      this.DB_TRANSACTIONS = 'test__transactions';
+    }
   }
 
   async init(fullScan = false) {
-    await checkAndCreateDirectory(this.dataPath);
+    if (this.useFiles) {
+      log(chalk.blue('Using files to store chain data'));
+      await checkAndCreateDirectory(this.dataPath);
+    }
+
+    if (this.useDatabase) {
+      log(chalk.blue('Using database to store chain data'));
+      try {
+        // start db connection
+        this.isDbConnected = await this.db.connect();
+      } catch (err) {
+        log(chalk.red(`Failed to connect to DB: ${err}`));
+        // exit
+        process.exit(0);
+      }
+    }
+
     await this.validateChain();
     await this.calculateBalances(this.isFullScanRequired || fullScan);
   }
@@ -42,75 +75,189 @@ class Chain {
   }
 
   async validateChain() {
+    if (this.useDatabase && !this.isDbConnected) {
+      log(chalk.red(`Database connection failed`));
+      process.exit(0);
+    }
+
     await this.getChainData();
     await this.getAccountsData();
 
-    const lastTxId = await this.getLastTxId();
-    const txCount =
-      (await getFilesFromFolder(this.dataPath, 'tx_')).length || 0;
-    const accountsFilesHash = getObjectHash(this.balances);
+    if (this.useFiles) {
+      const lastTxId = await this.getLastTxId();
+      const txCount =
+        (await getFilesFromFolder(this.dataPath, 'tx_')).length || 0;
+      const accountsFilesHash = getObjectHash(this.balances);
 
-    if (
-      lastTxId !== this.index ||
-      txCount !== this.index ||
-      accountsFilesHash !== this.accountsHash
-    ) {
-      this.accountsHash = accountsFilesHash;
-      this.isFullScanRequired = true;
-      this.isChainUpdateRequired = true;
-      this.isAccountsUpdateRequired = true;
+      if (
+        lastTxId !== this.index ||
+        txCount !== this.index ||
+        accountsFilesHash !== this.accountsHash
+      ) {
+        this.accountsHash = accountsFilesHash;
+        this.isFullScanRequired = true;
+        this.isChainUpdateRequired = true;
+        this.isAccountsUpdateRequired = true;
+      }
+
+      this.index = lastTxId;
+      this.oldIndex = lastTxId;
     }
-
-    this.index = lastTxId;
-    this.oldIndex = lastTxId;
   }
 
   async getChainData() {
-    const filePath = `${this.dataPath}/chain.json`;
-    let data = await readJsonFile(filePath);
-    if (!objectHasAllKeys(data, ['coins', 'index', 'accountsHash'])) {
-      this.accountsHash = '';
-      this.coins = 0;
-      this.index = 0;
-      this.isChainUpdateRequired = true;
+    if (this.useFiles) {
+      const filePath = `${this.dataPath}/chain.json`;
+      let data = await readJsonFile(filePath);
+      if (!objectHasAllKeys(data, ['coins', 'index', 'accountsHash'])) {
+        this.accountsHash = '';
+        this.coins = 0;
+        this.index = 0;
+        this.isChainUpdateRequired = true;
+      }
+      this.accountsHash = data.accountsHash || '';
+      this.coins = data.coins || 0;
+      this.index = data.index || 0;
     }
-    this.accountsHash = data.accountsHash || '';
-    this.coins = data.coins || 0;
-    this.index = data.index || 0;
+
+    if (this.useDatabase) {
+      // get total amount of coins
+      const totalCoins = await this.getDbCoins();
+      this.coins = totalCoins;
+      // get latest transaction index
+      const latestIndex = await this.getLastTxId() || 0;
+      this.index = latestIndex;
+    }
   }
 
   async getAccountsData() {
-    const files = await getFilesFromFolder(this.dataPath);
-    const accountFiles = files.filter((file) => file.startsWith('account_'));
+    if (this.useFiles) {
+      const files = await getFilesFromFolder(this.dataPath);
+      const accountFiles = files.filter((file) => file.startsWith('account_'));
 
-    if (accountFiles.length === 0) {
-      return;
+      if (accountFiles.length === 0) {
+        return;
+      }
+
+      for (let file of accountFiles) {
+        const filePath = `${this.dataPath}/${file}`;
+        const account = await readJsonFile(filePath);
+        this.balances[account.id] = account.balance || 0;
+      }
+
+      this.isBalanceAlreadySaved = true;
     }
 
-    for (let file of accountFiles) {
-      const filePath = `${this.dataPath}/${file}`;
-      const account = await readJsonFile(filePath);
-      this.balances[account.id] = account.balance || 0;
-    }
+    if (this.useDatabase) {
+      const accounts = await this.getDbAccountsBalances() || [];
+      if (accounts.length > 0) {
+        for (let account of accounts) {
+          this.balances[parseInt(account.accountId)] = account.balance || 0;
+        }
+      } else {
+        log(chalk.yellow('No accounts found'));
+      }
 
-    this.isBalanceAlreadySaved = true;
+      this.isBalanceAlreadySaved = true;
+    }
+  }
+
+  async getDbAccountsBalances() {
+    try {
+      const collection = this.db.connection.collection(this.DB_TRANSACTIONS);
+      const pipeline = [
+        {
+          $group: {
+            _id: {
+              $cond: [
+                { $eq: ['$sender', 0] },
+                '$receiver',
+                '$sender',
+              ],
+            },
+            balance: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$sender', 0] },
+                  { $subtract: ['$amount', '$fee'] },
+                  '$amount',
+                ],
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            accountId: '$_id',
+            balance: {
+              $round: ['$balance', 4],
+            },
+          },
+        },
+        {
+          $sort: {
+            accountId: 1,
+          },
+        },
+      ];
+      const accountBalances = await collection.aggregate(pipeline).toArray();
+      return accountBalances;
+    } catch (err) {
+      log(chalk.red(`Failed to calculate accounts balances: ${err}`));
+    }
   }
 
   async getLastTxId() {
-    let txId = (await getLatestFileInFolder(this.dataPath, 'tx_')) || null;
-    if (txId === null) {
-      return 0;
+    let txId = 0;
+
+    if (this.useFiles) {
+      txId = (await getLatestFileInFolder(this.dataPath, 'tx_')) || null;
+      if (txId === 0) {
+        return 0;
+      }
+
+      if (txId.startsWith('tx_')) {
+        txId = txId.slice(3);
+      }
+      if (txId.endsWith('.json')) {
+        txId = txId.substring(0, txId.length - 5);
+      }
+      txId = parseInt(txId);
     }
 
-    if (txId.startsWith('tx_')) {
-      txId = txId.slice(3);
+    if (this.useDatabase) {
+      try {
+        const collection = this.db.connection.collection(this.DB_TRANSACTIONS);
+        const result = await collection.find().sort({ id: -1 }).limit(1).toArray();
+        if (result.length > 0) {
+          txId = result[0].id;
+        }
+      } catch (err) {
+        log(chalk.red(`Failed to get last tx id: ${err}`));
+      }
     }
-    if (txId.endsWith('.json')) {
-      txId = txId.substring(0, txId.length - 5);
-    }
-    txId = parseInt(txId);
 
     return txId;
+  }
+
+  async getDbCoins()
+  {
+    let totalAmount = 0;
+
+    try {
+      const sender = 0;
+      const receiver = { $ne: 0 };
+      totalAmount = await this.db.aggregate(
+        this.DB_TRANSACTIONS,
+        { $match: { sender, receiver } },
+        { $group: { _id: null, totalAmount: { $sum: "$amount" } } },
+      ) || 0;
+    } catch (err) {
+      log(chalk.red(`Failed to get total amount of coins: ${err}`));
+    }
+
+    return totalAmount;
   }
 
   async createRandomTransfer(type) {
@@ -136,7 +283,7 @@ class Chain {
 
     const data = dataString.replace(/\s/g, '').split(',');
     if (data.length !== 3) {
-      console.error(`Error: transfer requires 3 params: from,to,amount`);
+      log(chalk.red(`Error: transfer requires 3 params: from,to,amount`));
       return;
     }
 
@@ -154,19 +301,12 @@ class Chain {
     const currentDate = new Date();
     const fileName = `tx_${newTxId}.json`;
     const filePath = `${this.dataPath}/${fileName}`;
-    const fee = sender === 0 ? 0 : Math.round(amount * 0.01);
+    const fee = sender === 0 ? 0 : parseFloat((amount / 100) * this.feeAmount);
     const total = parseFloat(amount + fee);
     const currentBalance = parseFloat(this.balances[sender] || 0);
 
     if (currentBalance < total && sender > 0) {
-      console.log(
-        `${sender}'s balance is too low. Current Balance ${currentBalance}. Required amount ${total}`
-      );
-      return;
-    }
-
-    if (sender === receiver) {
-      console.log(`Mr. ${sender}\nYou can not send tokens to yourself`);
+      log(chalk.red(`Error: ${sender}'s balance is too low. Current balance: ${currentBalance}. Required amount: ${total}`));
       return;
     }
 
@@ -180,9 +320,28 @@ class Chain {
       type: type || 'transfer',
       timestamp: currentDate.getTime(),
     };
-    const saved = await saveJsonFile(filePath, data);
+    let saved = false;
+
+    if (this.useFiles) {
+      saved = await saveJsonFile(filePath, data);
+    }
+
+    // if we are using db - save tx into mempool (it will be saved at the end)
+    if (this.useDatabase) {
+      // add tx into mempool
+      this.pendingTransactions.push(data);
+      // mark accounts to update
+      if (sender > 0 && !this.touchedAccounts.includes(sender)) {
+        this.touchedAccounts.push(sender);
+      }
+      if (receiver > 0 && !this.touchedAccounts.includes(receiver)) {
+        this.touchedAccounts.push(receiver);
+      }
+      saved = true;
+    }
+
     if (!saved) {
-      console.error(`Failed to save transaction`);
+      log(chalk.red(`Failed to save transaction`));
       return;
     }
 
@@ -191,9 +350,7 @@ class Chain {
       this.balances[sender] = parseFloat(currentBalance - total);
     }
     // update receiver cached balance
-    this.balances[receiver] = parseFloat(
-      (this.balances[receiver] || 0) + parseFloat(amount)
-    );
+    this.balances[receiver] = parseFloat(this.balances[receiver] || 0) + parseFloat(amount);
     // update tx index
     this.index += 1;
     // update coins count
@@ -202,9 +359,13 @@ class Chain {
     }
     this.coins -= parseFloat(fee);
 
-    console.log(
-      `#${newTxId}: ${amount} sent from ${sender} to ${receiver} with ${fee} fee`
-    );
+    if (this.useFiles && saved) {
+      log(chalk.green(`Tx #${newTxId} saved: ${amount} coins sent from ${sender} to ${receiver} with ${fee} fee`));
+    }
+
+    if (this.useDatabase) {
+      log(chalk.cyan(`Tx #${newTxId} queued: ${amount} coins to be sent from ${sender} to ${receiver} with ${fee} fee`));
+    }
   }
 
   forceUpdate() {
@@ -214,14 +375,16 @@ class Chain {
   }
 
   async startHistory(count = 10) {
+    log(chalk.green('New chain started'));
     for (let i = 1; i <= count; i++) {
-      await this.createRandomTransfer('reward');
+      await this.saveTransaction(0, i, this.rewardAmount, 'reward');
     }
     this.isAccountsUpdateRequired = true;
     this.isChainUpdateRequired = true;
   }
 
   async fillHistory(count = 1) {
+    log(chalk.blue(`Adding ${count} tx into chain...`));
     for (let i = 1; i <= count; i++) {
       await this.createRandomTransfer('transfer');
     }
@@ -234,6 +397,8 @@ class Chain {
     if (accounts.length === 0) {
       return;
     }
+
+    log(chalk.yellow(`Sending rewards to everyone`));
 
     const reward = parseInt(customRewardAmount || this.rewardAmount);
     for (let accountId of accounts) {
@@ -249,73 +414,92 @@ class Chain {
       return;
     }
 
-    const files = await getFilesFromFolder(this.dataPath);
+    if (this.useFiles) {
+      const files = await getFilesFromFolder(this.dataPath);
 
-    if (fullScan) {
-      this.balances = {};
-      this.coins = 0;
-      this.index = 0;
-      let totalCoins = 0;
-      const txFiles = files.filter((file) => file.startsWith('tx_'));
-      for (let file of txFiles) {
-        const filePath = `${this.dataPath}/${file}`;
-        const tx = await readJsonFile(filePath);
-        if (objectHasAllKeys(tx, ['sender', 'receiver', 'amount', 'fee'])) {
-          // update sender balance
-          if (this.balances[tx.sender] === undefined && tx.sender > 0) {
-            this.balances[tx.sender] = 0;
+      if (fullScan) {
+        this.balances = {};
+        this.coins = 0;
+        this.index = 0;
+        let totalCoins = 0;
+        const txFiles = files.filter((file) => file.startsWith('tx_'));
+        for (let file of txFiles) {
+          const filePath = `${this.dataPath}/${file}`;
+          const tx = await readJsonFile(filePath);
+          if (objectHasAllKeys(tx, ['sender', 'receiver', 'amount', 'fee'])) {
+            // update sender balance
+            if (this.balances[tx.sender] === undefined && tx.sender > 0) {
+              this.balances[tx.sender] = 0;
+            }
+            if (tx.sender > 0) {
+              this.balances[tx.sender] -= parseFloat(tx.amount + tx.fee);
+            }
+            // update receiver balance
+            if (this.balances[tx.receiver] === undefined) {
+              this.balances[tx.receiver] = 0;
+            }
+            this.balances[tx.receiver] += parseFloat(tx.amount);
+            // update total coins
+            if (tx.sender == 0) {
+              totalCoins += parseFloat(tx.amount);
+            }
+            if (tx.receiver == 0) {
+              totalCoins -= parseFloat(tx.amount + tx.fee);
+            }
+            totalCoins -= parseFloat(tx.fee);
           }
-          if (tx.sender > 0) {
-            this.balances[tx.sender] -= parseFloat(tx.amount + tx.fee);
-          }
-          // update receiver balance
-          if (this.balances[tx.receiver] === undefined) {
-            this.balances[tx.receiver] = 0;
-          }
-          this.balances[tx.receiver] += parseFloat(tx.amount);
-          // update total coins
-          if (tx.sender == 0) {
-            totalCoins += parseFloat(tx.amount);
-          }
-          if (tx.receiver == 0) {
-            totalCoins -= parseFloat(tx.amount + tx.fee);
-          }
-          totalCoins -= parseFloat(tx.fee);
         }
+        this.coins = totalCoins;
+        this.index = await this.getLastTxId();
+        this.isChainUpdateRequired = true;
+        this.isAccountsUpdateRequired = true;
+      } else {
+        await this.getAccountsData();
       }
-      this.coins = totalCoins;
-      this.index = await this.getLastTxId();
-      this.isChainUpdateRequired = true;
-      this.isAccountsUpdateRequired = true;
-    } else {
-      await this.getAccountsData();
     }
   }
 
   async saveAccounts() {
     const accounts = Object.keys(this.balances) || [];
-    if (accounts.length === 0) {
-      return;
+      if (accounts.length === 0) {
+        return;
+      }
+
+    if (this.useFiles) {
+      for (let accountId of accounts) {
+        const filePath = `${this.dataPath}/account_${accountId}.json`;
+        const data = {
+          id: accountId,
+          balance: this.balances[accountId],
+          index: this.index,
+        };
+        await saveJsonFile(filePath, data);
+      }
     }
 
-    for (let accountId of accounts) {
-      const filePath = `${this.dataPath}/account_${accountId}.json`;
-      const data = {
-        id: accountId,
-        balance: this.balances[accountId],
-        index: this.index,
-      };
-      await saveJsonFile(filePath, data);
+    if (this.useDatabase) {
+      for (let accountId of this.touchedAccounts) {
+        const filter = { id: parseInt(accountId) };
+        const update = { $set:
+          {
+            balance: this.balances[parseInt(accountId)] || 0,
+            index: this.index
+          }
+        };
+        await this.db.updateOrInsert(this.DB_ACCOUNTS, filter, update);
+      }
     }
   }
 
   async saveChainData() {
-    const filePath = `${this.dataPath}/chain.json`;
-    await saveJsonFile(filePath, {
-      accountsHash: getObjectHash(this.balances),
-      coins: this.coins,
-      index: this.index,
-    });
+    if (this.useFiles) {
+      const filePath = `${this.dataPath}/chain.json`;
+      await saveJsonFile(filePath, {
+        accountsHash: getObjectHash(this.balances),
+        coins: this.coins,
+        index: this.index,
+      });
+    }
   }
 
   printChainData() {
@@ -343,7 +527,41 @@ class Chain {
     console.log(table.toString());
   }
 
+  async savePendingTransactions() {
+    if (this.pendingTransactions.length === 0) {
+      return;
+    }
+
+    // TODO: split on chunks if array is too big
+
+    try {
+      const result = await this.db.insert(this.DB_TRANSACTIONS, this.pendingTransactions);
+      if (result.insertedCount) {
+        log(chalk.green(`${result.insertedCount}/${this.pendingTransactions.length} transaction${result.insertedCount > 1 ? 's' : ''} saved into DB`));
+        this.pendingTransactions = [];
+      }
+    } catch (err) {
+      log(chalk.red(`Failed to save pending transactions: ${err}`));
+    }
+  }
+
+  async eraseData() {
+    log(chalk.yellow(`Chain data will be erased in 5 seconds, you can stop it now`));
+    await sleep(5000);
+    log(chalk.blue(`Erase is started`));
+    await this.db.clear(this.DB_ACCOUNTS);
+    await this.db.clear(this.DB_TRANSACTIONS);
+    log(chalk.blue(`Erase is finished`));
+    this.balances = [];
+    this.coins = 0;
+    this.index = 0;
+  }
+
   async saveData() {
+    if (this.useDatabase) {
+      await this.savePendingTransactions();
+    }
+
     if (this.index !== this.oldIndex || this.isAccountsUpdateRequired) {
       await this.saveAccounts();
     }
@@ -351,6 +569,19 @@ class Chain {
     if (this.index !== this.oldIndex || this.isChainUpdateRequired) {
       await this.saveChainData();
     }
+
+    if (this.useDatabase) {
+      try {
+        // close db connection
+        await this.db.disconnect();
+      } catch (err) {
+        log(chalk.red(`Failed to close connection`));
+      }
+    }
+  }
+
+  exit() {
+    process.exit(0);
   }
 }
 
