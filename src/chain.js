@@ -10,7 +10,6 @@ import {
   objectHasAllKeys,
   readJsonFile,
   saveJsonFile,
-  sleep,
   log,
 } from './utils.js';
 import Table from 'cli-table3';
@@ -21,7 +20,6 @@ import DB from './db.js';
 class Chain {
   constructor(useDb = false) {
     this.dataPath = join(dirname(new URL(import.meta.url).pathname), '../data');
-    this.options = {};
     this.balances = {};
     this.feeAmount = 1; // %
     this.rewardAmount = 1000;
@@ -48,26 +46,54 @@ class Chain {
     }
   }
 
-  async init(fullScan = false) {
+  async init(options) {
+    const fullScan = options.scan || false;
+
     if (this.useFiles) {
       log(chalk.blue(`📁 Using file system to store chain data`));
       await checkAndCreateDirectory(this.dataPath);
     }
 
     if (this.useDatabase) {
-      log(chalk.blue(`💾 Using database to store chain data`));
+      log(chalk.blue(`🗄  Using DB to store chain data`));
       try {
-        // start db connection
+        log(chalk.gray(`🔗 Connecting to the DB...`));
         this.isDbConnected = await this.db.connect();
       } catch (err) {
-        log(chalk.red(`🚫 Failed to connect to DB: ${err}`));
-        // exit
+        log(chalk.red(`🚫 Failed to connect to the DB: ${err}`));
         this.exit();
       }
     }
 
     await this.validateChain();
     await this.calculateBalances(this.isFullScanRequired || fullScan);
+
+    // work with CLI options
+    if (options.erase) {
+      await this.eraseData();
+    } else {
+      await this.processRegularStart(options);
+    }
+
+    await this.printAccountsBalances();
+    this.printChainData();
+    await this.closeDbConnection();
+  }
+
+  async processRegularStart(options) {
+    if (options.airdrop || options.reward) {
+      await this.sendRewards(options.airdrop);
+    }
+
+    if (options.transfer) {
+      await this.createTransfer(options.transfer);
+    }
+
+    if (options.count) {
+      await this.append(options.count || 1);
+    }
+
+    await this.saveData();
   }
 
   async append(appendCount = 1, initialCount = 10) {
@@ -125,9 +151,7 @@ class Chain {
     }
 
     if (this.useDatabase) {
-      // get latest transaction index
-      const latestIndex = (await this.getLastTxId()) || 0;
-      this.index = latestIndex;
+      this.index = await this.getLastTxId() || 0;
     }
   }
 
@@ -166,11 +190,12 @@ class Chain {
   }
 
   async getDbAccountsBalances(getSavedBalances = true) {
+    log(chalk.gray(`🔎 Collecting accounts data...`));
+
     try {
       let accountBalances;
 
       if (getSavedBalances) {
-        // faster and more easier way
         const collection = this.db.connection.collection(this.DB_ACCOUNTS);
         const pipeline = [
           {
@@ -192,6 +217,8 @@ class Chain {
   }
 
   async getLastTxId() {
+    log(chalk.gray(`🔍 Calculating last tx ID...`));
+
     let txId = 0;
 
     if (this.useFiles) {
@@ -230,6 +257,8 @@ class Chain {
   }
 
   async getDbCoins() {
+    log(chalk.gray(`🧮 Calculating total coins amount...`));
+
     let totalAmount = 0;
 
     try {
@@ -280,24 +309,25 @@ class Chain {
 
   async createTransfer() {
     log(chalk.green(`💸 Creating new transaction`));
+
     try {
       const input = await inquirer.prompt([
         {
           type: 'input',
           name: 'sender',
-          message: `➡️ Sender:`,
+          message: `⤴️ Sender:`,
           default: 0,
         },
         {
           type: 'input',
           name: 'receiver',
-          message: `⬅️ Receiver:`,
+          message: `⤵️ Receiver:`,
           default: 0,
         },
         {
           type: 'input',
           name: 'amount',
-          message: `🔢 Amount:`,
+          message: `🔢Amount:`,
           default: 0,
         },
         {
@@ -324,8 +354,6 @@ class Chain {
   async saveTransaction(sender, receiver, amount, type) {
     const newTxId = this.index + 1;
     const currentDate = new Date();
-    const fileName = `tx_${newTxId}.json`;
-    const filePath = `${this.dataPath}/${fileName}`;
     const fee = sender === 0 ? 0 : parseFloat((amount / 100) * this.feeAmount);
     const total = parseFloat(amount + fee);
     const currentBalance = parseFloat(this.balances[sender] || 0);
@@ -333,7 +361,7 @@ class Chain {
     if (currentBalance < total && sender > 0) {
       log(
         chalk.yellow(
-          `⚠️ ${sender}'s balance is too low. Current balance: ${currentBalance}. Required amount: ${total}`
+          `⚠️  ${sender}'s balance is too low. Current balance: ${currentBalance.toFixed(2)}. Required amount: ${total.toFixed(2)}`
         )
       );
       return false;
@@ -352,6 +380,8 @@ class Chain {
     let saved = false;
 
     if (this.useFiles) {
+      const fileName = `tx_${newTxId}.json`;
+      const filePath = `${this.dataPath}/${fileName}`;
       saved = await saveJsonFile(filePath, data);
     }
 
@@ -392,7 +422,7 @@ class Chain {
     if (this.useFiles && saved) {
       log(
         chalk.green(
-          `Tx #${newTxId} saved: ${amount} coins sent from ${sender} to ${receiver} with ${fee} fee`
+          `📦  Tx #${newTxId} is saved: ${amount} coins sent from ${sender} to ${receiver} with ${fee} fee`
         )
       );
     }
@@ -400,7 +430,7 @@ class Chain {
     if (this.useDatabase) {
       log(
         chalk.cyan(
-          `Tx #${newTxId} queued: ${amount} coins to be sent from ${sender} to ${receiver} with ${fee} fee`
+          `🗳  Tx #${newTxId} is queued: ${amount} coins to be sent from ${sender} to ${receiver} with ${fee} fee`
         )
       );
     }
@@ -415,7 +445,7 @@ class Chain {
   }
 
   async startHistory(count = 10) {
-    log(chalk.green('New chain started'));
+    log(chalk.green(`🎉 New chain is started!`));
     for (let i = 1; i <= count; i++) {
       await this.saveTransaction(0, i, this.rewardAmount, 'reward');
     }
@@ -425,6 +455,7 @@ class Chain {
 
   async fillHistory(count = 1) {
     log(chalk.blue(`⏳ Adding ${count} tx into chain...`));
+
     let i = count;
     while (i > 0) {
       const txIsCreated = await this.createRandomTransfer('transfer');
@@ -432,6 +463,7 @@ class Chain {
         i -= 1;
       }
     }
+
     this.isAccountsUpdateRequired = true;
     this.isChainUpdateRequired = true;
   }
@@ -442,7 +474,7 @@ class Chain {
       return;
     }
 
-    log(chalk.yellow(`💸 Sending rewards to everyone...`));
+    log(chalk.magenta(`💸 Sending rewards to everyone...`));
 
     const reward = parseInt(customRewardAmount || this.rewardAmount);
     for (let accountId of accounts) {
@@ -522,6 +554,12 @@ class Chain {
     }
 
     if (this.useDatabase) {
+      if (this.touchedAccounts.length === 0) {
+        return;
+      }
+
+      log(chalk.gray(`💾 Saving accounts data...`));
+
       try {
         const collection = this.db.connection.collection(this.DB_ACCOUNTS);
         const accountUpdates = [];
@@ -534,8 +572,8 @@ class Chain {
               $set: {
                 balance: this.balances[parseInt(accountId)] || 0,
                 index: this.index,
-              }
-            }
+              },
+            },
           });
         }
         const bulkUpdates = accountUpdates.map((update) => ({
@@ -618,6 +656,8 @@ class Chain {
       return;
     }
 
+    log(chalk.gray(`💾 Saving pending transactions...`));
+
     // TODO: split on chunks if array is too big
 
     try {
@@ -628,7 +668,9 @@ class Chain {
       if (result.insertedCount) {
         log(
           chalk.green(
-            `✅ ${result.insertedCount} transaction${result.insertedCount > 1 ? 's' : ''} saved into DB`
+            `✅ ${result.insertedCount} transaction${
+              result.insertedCount > 1 ? 's' : ''
+            } saved into DB`
           )
         );
         this.pendingTransactions = [];
@@ -653,16 +695,16 @@ class Chain {
       ]);
 
       if (input.sure) {
-        log(chalk.blue(`✅ Erase is confirmed`));
+        log(chalk.gray(`🗑 Erasing DB data...`));
 
         await this.db.clear(this.DB_ACCOUNTS);
         this.dbCalls += 1;
         await this.db.clear(this.DB_TRANSACTIONS);
         this.dbCalls += 1;
 
-        log(chalk.blue(`✅ Database data erased!`));
+        log(chalk.blue(`✅ Database is erased!`));
       } else {
-        log(chalk.blue(`❎ Erase is declined`));
+        log(chalk.blue(`❎ Erase is declined!`));
       }
 
       this.balances = [];
@@ -685,23 +727,25 @@ class Chain {
     if (this.index !== this.oldIndex || this.isChainUpdateRequired) {
       await this.saveChainData();
     }
-
-    if (this.useDatabase) {
-      await this.closeDbConnection();
-      this.isFinished = true;
-    }
   }
 
   async closeDbConnection() {
+    if (this.isFinished) {
+      return;
+    }
+
+    log(chalk.gray(`🔌 Closing the DB connection...`));
+
     try {
-      // close db connection
       await this.db.disconnect();
+      this.isFinished = true;
     } catch (err) {
       log(chalk.red(`🚫 Failed to close connection`));
     }
   }
 
   exit() {
+    this.closeDbConnection();
     process.exit(0);
   }
 }

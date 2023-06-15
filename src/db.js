@@ -59,7 +59,9 @@ class DB {
   async updateOrInsert(collectionName, filter, update) {
     try {
       const collection = this.connection.collection(collectionName);
-      const result = await collection.updateOne(filter, update, { upsert: true });
+      const result = await collection.updateOne(filter, update, {
+        upsert: true,
+      });
       return result;
     } catch (err) {
       console.error('Error updating or inserting:', err);
@@ -80,7 +82,9 @@ class DB {
     try {
       const collection = this.connection.collection(collectionName);
       const result = await collection.deleteMany({});
-      console.log(`Collection "${collectionName}" is cleared [${result.deletedCount}]`);
+      console.log(
+        `Collection "${collectionName}" is cleared [${result.deletedCount}]`
+      );
       return result;
     } catch (err) {
       console.error(`Failed to clear "${collectionName}":`, err);

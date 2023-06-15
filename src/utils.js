@@ -67,7 +67,7 @@ export async function objectHasAllKeys(json, requiredKeys) {
 }
 
 export function getMaxArrayValue(array) {
-  return Math.max(...array.map(element => element));
+  return Math.max(...array.map((element) => element));
 }
 
 export function getRandomInt(min, max) {
@@ -87,7 +87,7 @@ export function getTwoUniqueRandomInts(min, max) {
 }
 
 export function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export const log = console.log;
