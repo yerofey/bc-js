@@ -730,7 +730,7 @@ class Chain {
   }
 
   async closeDbConnection() {
-    if (this.isFinished) {
+    if (!this.isDbConnected || this.isFinished) {
       return;
     }
 
