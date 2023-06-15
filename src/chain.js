@@ -151,7 +151,7 @@ class Chain {
     }
 
     if (this.useDatabase) {
-      this.index = await this.getLastTxId() || 0;
+      this.index = (await this.getLastTxId()) || 0;
     }
   }
 
@@ -291,20 +291,18 @@ class Chain {
     return totalAmount;
   }
 
-  async createRandomTransfer(type) {
+  async createRandomTransfer() {
+    const firstAccountId = 1;
+    const highestAccountId = Object.keys(this.balances).length > 0
+    ? getMaxArrayValue(Object.keys(this.balances))
+    : 10;
+
     let sender = 0;
-    let receiver = getRandomInt(1, 10);
-    let amount = getRandomInt(1, 100);
+    let receiver = 0;
+    [sender, receiver] = getTwoUniqueRandomInts(firstAccountId, highestAccountId);
+    const amount = getRandomInt(1, 100);
 
-    if (type == 'reward') {
-      amount = this.rewardAmount;
-    }
-
-    if (type == 'transfer') {
-      [receiver, sender] = getTwoUniqueRandomInts(1, 10);
-    }
-
-    return await this.saveTransaction(sender, receiver, amount, type);
+    return await this.saveTransaction(sender, receiver, amount, 'transfer');
   }
 
   async createTransfer() {
@@ -361,7 +359,9 @@ class Chain {
     if (currentBalance < total && sender > 0) {
       log(
         chalk.yellow(
-          `⚠️  ${sender}'s balance is too low. Current balance: ${currentBalance.toFixed(2)}. Required amount: ${total.toFixed(2)}`
+          `⚠️  ${sender}'s balance is too low. Current balance: ${currentBalance.toFixed(
+            2
+          )}. Required amount: ${total.toFixed(2)}`
         )
       );
       return false;
@@ -458,7 +458,7 @@ class Chain {
 
     let i = count;
     while (i > 0) {
-      const txIsCreated = await this.createRandomTransfer('transfer');
+      const txIsCreated = await this.createRandomTransfer();
       if (txIsCreated) {
         i -= 1;
       }
