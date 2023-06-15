@@ -1,5 +1,6 @@
 _/
 data/
 node_modules/
+.vscode/
 .editorconfig
 .env
