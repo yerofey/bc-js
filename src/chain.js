@@ -274,7 +274,7 @@ class Chain {
       [receiver, sender] = getTwoUniqueRandomInts(1, 10);
     }
 
-    await this.saveTransaction(sender, receiver, amount, type);
+    return await this.saveTransaction(sender, receiver, amount, type);
   }
 
   async createTransfer() {
@@ -335,7 +335,7 @@ class Chain {
           `Error: ${sender}'s balance is too low. Current balance: ${currentBalance}. Required amount: ${total}`
         )
       );
-      return;
+      return false;
     }
 
     // save tx
@@ -370,7 +370,7 @@ class Chain {
 
     if (!saved) {
       log(chalk.red(`Failed to save transaction`));
-      return;
+      return false;
     }
 
     // update sender cached balance
@@ -403,6 +403,8 @@ class Chain {
         )
       );
     }
+
+    return true;
   }
 
   forceUpdate() {
@@ -422,8 +424,12 @@ class Chain {
 
   async fillHistory(count = 1) {
     log(chalk.blue(`Adding ${count} tx into chain...`));
-    for (let i = 1; i <= count; i++) {
-      await this.createRandomTransfer('transfer');
+    let i = count;
+    while (i > 0) {
+      const txIsCreated = await this.createRandomTransfer('transfer');
+      if (txIsCreated) {
+        i -= 1;
+      }
     }
     this.isAccountsUpdateRequired = true;
     this.isChainUpdateRequired = true;
@@ -617,9 +623,7 @@ class Chain {
       if (result.insertedCount) {
         log(
           chalk.green(
-            `${result.insertedCount}/${
-              this.pendingTransactions.length
-            } transaction${result.insertedCount > 1 ? 's' : ''} saved into DB`
+            `${result.insertedCount} transaction${result.insertedCount > 1 ? 's' : ''} saved into DB`
           )
         );
         this.pendingTransactions = [];
