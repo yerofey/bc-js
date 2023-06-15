@@ -38,6 +38,7 @@ class Chain {
     this.useDatabase = useDb;
     this.useFiles = !useDb;
     this.isDbConnected = false;
+    this.isFinished = false;
     this.dbCalls = 0;
 
     if (useDb) {
@@ -586,6 +587,10 @@ class Chain {
   }
 
   async printAccountsBalances() {
+    if (!this.isFinished) {
+      await this.closeDbConnection();
+    }
+
     const accounts = Object.keys(this.balances) || [];
     if (accounts.length === 0) {
       return;
@@ -678,12 +683,17 @@ class Chain {
     }
 
     if (this.useDatabase) {
-      try {
-        // close db connection
-        await this.db.disconnect();
-      } catch (err) {
-        log(chalk.red(`Failed to close connection`));
-      }
+      await this.closeDbConnection();
+      this.isFinished = true;
+    }
+  }
+
+  async closeDbConnection() {
+    try {
+      // close db connection
+      await this.db.disconnect();
+    } catch (err) {
+      log(chalk.red(`Failed to close connection`));
     }
   }
 
