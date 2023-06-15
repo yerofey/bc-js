@@ -515,16 +515,32 @@ class Chain {
     }
 
     if (this.useDatabase) {
-      for (let accountId of this.touchedAccounts) {
-        const filter = { id: parseInt(accountId) };
-        const update = {
-          $set: {
-            balance: this.balances[parseInt(accountId)] || 0,
-            index: this.index,
+      try {
+        const collection = this.db.connection.collection(this.DB_ACCOUNTS);
+        const accountUpdates = [];
+        for (let accountId of this.touchedAccounts) {
+          accountUpdates.push({
+            filter: {
+              id: parseInt(accountId),
+            },
+            update: {
+              $set: {
+                balance: this.balances[parseInt(accountId)] || 0,
+                index: this.index,
+              }
+            }
+          });
+        }
+        const bulkUpdates = accountUpdates.map((update) => ({
+          updateOne: {
+            filter: update.filter,
+            update: update.update,
           },
-        };
-        await this.db.updateOrInsert(this.DB_ACCOUNTS, filter, update);
+        }));
+        await collection.bulkWrite(bulkUpdates);
         this.dbCalls += 1;
+      } catch (err) {
+        log(chalk.red(`Failed to update accounts: ${err}`));
       }
     }
   }
