@@ -30,6 +30,5 @@ const main = async () => {
 
   await chain.printAccountsBalances();
   chain.printChainData();
-  chain.exit();
 };
 main();

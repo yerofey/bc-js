@@ -38,6 +38,7 @@ class Chain {
     this.useDatabase = useDb;
     this.useFiles = !useDb;
     this.isDbConnected = false;
+    this.dbCalls = 0;
 
     if (useDb) {
       this.db = new DB();
@@ -60,7 +61,7 @@ class Chain {
       } catch (err) {
         log(chalk.red(`Failed to connect to DB: ${err}`));
         // exit
-        process.exit(0);
+        this.exit();
       }
     }
 
@@ -79,7 +80,7 @@ class Chain {
   async validateChain() {
     if (this.useDatabase && !this.isDbConnected) {
       log(chalk.red(`Database connection failed`));
-      process.exit(0);
+      this.exit();
     }
 
     await this.getChainData();
@@ -180,6 +181,7 @@ class Chain {
           },
         ];
         accountBalances = await collection.aggregate(pipeline).toArray();
+        this.dbCalls += 1;
       }
 
       return accountBalances;
@@ -217,6 +219,7 @@ class Chain {
         if (result.length > 0) {
           txId = result[0].id;
         }
+        this.dbCalls += 1;
       } catch (err) {
         log(chalk.red(`Failed to get last tx id: ${err}`));
       }
@@ -250,6 +253,7 @@ class Chain {
         ])
         .toArray();
       totalAmount = result.length > 0 ? result[0].totalAmount : 0;
+      this.dbCalls += 1;
     } catch (err) {
       log(chalk.red(`Failed to get total amount of coins: ${err}`));
     }
@@ -520,6 +524,7 @@ class Chain {
           },
         };
         await this.db.updateOrInsert(this.DB_ACCOUNTS, filter, update);
+        this.dbCalls += 1;
       }
     }
   }
@@ -603,6 +608,7 @@ class Chain {
         );
         this.pendingTransactions = [];
       }
+      this.dbCalls += 1;
     } catch (err) {
       log(chalk.red(`Failed to save pending transactions: ${err}`));
     }
@@ -623,7 +629,9 @@ class Chain {
       if (input.sure) {
         log(chalk.blue(`Erase is confirmed`));
         await this.db.clear(this.DB_ACCOUNTS);
+        this.dbCalls += 1;
         await this.db.clear(this.DB_TRANSACTIONS);
+        this.dbCalls += 1;
       } else {
         log(chalk.blue(`Erase is declined`));
       }
