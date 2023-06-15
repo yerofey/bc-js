@@ -50,17 +50,17 @@ class Chain {
 
   async init(fullScan = false) {
     if (this.useFiles) {
-      log(chalk.blue('Using files to store chain data'));
+      log(chalk.blue(`📁 Using file system to store chain data`));
       await checkAndCreateDirectory(this.dataPath);
     }
 
     if (this.useDatabase) {
-      log(chalk.blue('Using database to store chain data'));
+      log(chalk.blue(`💾 Using database to store chain data`));
       try {
         // start db connection
         this.isDbConnected = await this.db.connect();
       } catch (err) {
-        log(chalk.red(`Failed to connect to DB: ${err}`));
+        log(chalk.red(`🚫 Failed to connect to DB: ${err}`));
         // exit
         this.exit();
       }
@@ -80,7 +80,7 @@ class Chain {
 
   async validateChain() {
     if (this.useDatabase && !this.isDbConnected) {
-      log(chalk.red(`Database connection failed`));
+      log(chalk.red(`🚫 Database connection failed`));
       this.exit();
     }
 
@@ -158,7 +158,7 @@ class Chain {
           this.coins += accountBalance;
         }
       } else {
-        log(chalk.yellow('No accounts found'));
+        log(chalk.yellow(`⚠️ No accounts found!`));
       }
 
       this.isBalanceAlreadySaved = true;
@@ -187,7 +187,7 @@ class Chain {
 
       return accountBalances;
     } catch (err) {
-      log(chalk.red(`Failed to calculate accounts balances: ${err}`));
+      log(chalk.red(`🚫 Failed to calculate accounts balances: ${err}`));
     }
   }
 
@@ -222,7 +222,7 @@ class Chain {
         }
         this.dbCalls += 1;
       } catch (err) {
-        log(chalk.red(`Failed to get last tx id: ${err}`));
+        log(chalk.red(`🚫 Failed to get last tx id: ${err}`));
       }
     }
 
@@ -256,7 +256,7 @@ class Chain {
       totalAmount = result.length > 0 ? result[0].totalAmount : 0;
       this.dbCalls += 1;
     } catch (err) {
-      log(chalk.red(`Failed to get total amount of coins: ${err}`));
+      log(chalk.red(`🚫 Failed to get total amount of coins: ${err}`));
     }
 
     return totalAmount;
@@ -279,31 +279,31 @@ class Chain {
   }
 
   async createTransfer() {
-    log(chalk.green(`Creating new transaction`));
+    log(chalk.green(`💸 Creating new transaction`));
     try {
       const input = await inquirer.prompt([
         {
           type: 'input',
           name: 'sender',
-          message: 'Sender:',
+          message: `➡️ Sender:`,
           default: 0,
         },
         {
           type: 'input',
           name: 'receiver',
-          message: 'Receiver:',
+          message: `⬅️ Receiver:`,
           default: 0,
         },
         {
           type: 'input',
           name: 'amount',
-          message: 'Amount:',
+          message: `🔢 Amount:`,
           default: 0,
         },
         {
           type: 'input',
           name: 'type',
-          message: 'Type:',
+          message: `*️⃣ Type:`,
           default: 'transfer',
         },
       ]);
@@ -317,7 +317,7 @@ class Chain {
 
       this.forceUpdate();
     } catch (err) {
-      log(chalk.red(`Failed to create transaction`));
+      log(chalk.red(`🚫 Failed to create transaction`));
     }
   }
 
@@ -332,8 +332,8 @@ class Chain {
 
     if (currentBalance < total && sender > 0) {
       log(
-        chalk.red(
-          `Error: ${sender}'s balance is too low. Current balance: ${currentBalance}. Required amount: ${total}`
+        chalk.yellow(
+          `⚠️ ${sender}'s balance is too low. Current balance: ${currentBalance}. Required amount: ${total}`
         )
       );
       return false;
@@ -370,7 +370,7 @@ class Chain {
     }
 
     if (!saved) {
-      log(chalk.red(`Failed to save transaction`));
+      log(chalk.red(`🚫 Failed to save transaction`));
       return false;
     }
 
@@ -424,7 +424,7 @@ class Chain {
   }
 
   async fillHistory(count = 1) {
-    log(chalk.blue(`Adding ${count} tx into chain...`));
+    log(chalk.blue(`⏳ Adding ${count} tx into chain...`));
     let i = count;
     while (i > 0) {
       const txIsCreated = await this.createRandomTransfer('transfer');
@@ -442,7 +442,7 @@ class Chain {
       return;
     }
 
-    log(chalk.yellow(`Sending rewards to everyone`));
+    log(chalk.yellow(`💸 Sending rewards to everyone...`));
 
     const reward = parseInt(customRewardAmount || this.rewardAmount);
     for (let accountId of accounts) {
@@ -547,7 +547,7 @@ class Chain {
         await collection.bulkWrite(bulkUpdates);
         this.dbCalls += 1;
       } catch (err) {
-        log(chalk.red(`Failed to update accounts: ${err}`));
+        log(chalk.red(`🚫 Failed to update accounts: ${err}`));
       }
     }
   }
@@ -628,44 +628,48 @@ class Chain {
       if (result.insertedCount) {
         log(
           chalk.green(
-            `${result.insertedCount} transaction${result.insertedCount > 1 ? 's' : ''} saved into DB`
+            `✅ ${result.insertedCount} transaction${result.insertedCount > 1 ? 's' : ''} saved into DB`
           )
         );
         this.pendingTransactions = [];
       }
       this.dbCalls += 1;
     } catch (err) {
-      log(chalk.red(`Failed to save pending transactions: ${err}`));
+      log(chalk.red(`🚫 Failed to save pending transactions: ${err}`));
     }
   }
 
   async eraseData() {
-    log(chalk.yellow(`Erasing the chain data`));
+    log(chalk.yellow(`⚠️ Erasing the chain data`));
+
     try {
       const input = await inquirer.prompt([
         {
           type: 'confirm',
           name: 'sure',
-          message: 'Do you really want to erase the data?',
+          message: `⁉️ Do you really want to erase the data?`,
           default: true,
         },
       ]);
 
       if (input.sure) {
-        log(chalk.blue(`Erase is confirmed`));
+        log(chalk.blue(`✅ Erase is confirmed`));
+
         await this.db.clear(this.DB_ACCOUNTS);
         this.dbCalls += 1;
         await this.db.clear(this.DB_TRANSACTIONS);
         this.dbCalls += 1;
+
+        log(chalk.blue(`✅ Database data erased!`));
       } else {
-        log(chalk.blue(`Erase is declined`));
+        log(chalk.blue(`❎ Erase is declined`));
       }
 
       this.balances = [];
       this.coins = 0;
       this.index = 0;
     } catch (err) {
-      log(chalk.red(`Failed to erase the chain data`));
+      log(chalk.red(`🚫 Failed to erase the chain data`));
     }
   }
 
@@ -693,7 +697,7 @@ class Chain {
       // close db connection
       await this.db.disconnect();
     } catch (err) {
-      log(chalk.red(`Failed to close connection`));
+      log(chalk.red(`🚫 Failed to close connection`));
     }
   }
 
