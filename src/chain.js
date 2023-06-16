@@ -293,13 +293,17 @@ class Chain {
 
   async createRandomTransfer() {
     const firstAccountId = 1;
-    const highestAccountId = Object.keys(this.balances).length > 0
-    ? getMaxArrayValue(Object.keys(this.balances))
-    : 10;
+    const highestAccountId =
+      Object.keys(this.balances).length > 0
+        ? getMaxArrayValue(Object.keys(this.balances))
+        : 10;
 
     let sender = 0;
     let receiver = 0;
-    [sender, receiver] = getTwoUniqueRandomInts(firstAccountId, highestAccountId);
+    [sender, receiver] = getTwoUniqueRandomInts(
+      firstAccountId,
+      highestAccountId
+    );
     const amount = getRandomInt(1, 100);
 
     return await this.saveTransaction(sender, receiver, amount, 'transfer');
