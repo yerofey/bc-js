@@ -41,8 +41,8 @@ class Chain {
 
     if (useDb) {
       this.db = new DB();
-      this.DB_ACCOUNTS = 'test__accounts';
-      this.DB_TRANSACTIONS = 'test__transactions';
+      this.DB_ACCOUNTS = process.env.DB_COLLECTION_ACCOUNTS;
+      this.DB_TRANSACTIONS = process.env.DB_COLLECTION_TRANSACTIONS;
     }
   }
 
