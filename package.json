@@ -4,7 +4,13 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "airdrop": "node index.js -a",
+    "create": "node index.js -c",
+    "erase": "node index.js -e",
+    "reward": "node index.js -r",
+    "scan": "node index.js -s",
+    "start": "node index.js",
+    "transfer": "node index.js -t"
   },
   "license": "MIT",
   "dependencies": {
