@@ -190,7 +190,7 @@ class Chain {
   }
 
   async getDbAccountsBalances(getSavedBalances = true) {
-    log(chalk.gray(`🔎 Collecting accounts data...`));
+    log(chalk.gray(`🪪  Collecting accounts data...`)); // 🔎
 
     try {
       let accountBalances;
@@ -217,7 +217,7 @@ class Chain {
   }
 
   async getLastTxId() {
-    log(chalk.gray(`🔍 Calculating last tx ID...`));
+    log(chalk.gray(`🗂️  Calculating last tx ID...`)); // 🔎
 
     let txId = 0;
 
