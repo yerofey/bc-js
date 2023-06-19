@@ -68,10 +68,20 @@ class DB {
     }
   }
 
-  async find(collectionName, filter = {}) {
+  async find(collectionName, filter = {}, offset, limit) {
     try {
       const collection = this.connection.collection(collectionName);
-      const documents = await collection.find(filter).toArray();
+      let query = collection.find(filter);
+
+      if (offset) {
+        query = query.skip(parseInt(offset));
+      }
+
+      if (limit) {
+        query = query.limit(parseInt(limit));
+      }
+
+      const documents = await query.toArray();
       return documents;
     } catch (err) {
       console.error('Error finding documents:', err);
