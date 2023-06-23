@@ -100,6 +100,28 @@ class DB {
       console.error(`Failed to clear "${collectionName}":`, err);
     }
   }
+
+  async getLastId(collectionName) {
+    const collection = this.connection.collection(collectionName);
+    const pipeline = [
+      {
+        $sort: { id: -1 },
+      },
+      {
+        $limit: 1,
+      },
+      {
+        $project: {
+          _id: 0,
+          lastId: '$id',
+        },
+      },
+    ];
+    const result = await collection.aggregate(pipeline).toArray();
+    const lastId = result.length > 0 ? result[0].lastId : 0;
+
+    return lastId;
+  }
 }
 
 export default DB;
