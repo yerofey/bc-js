@@ -578,12 +578,14 @@ class Chain {
                 index: this.index,
               },
             },
+            upsert: true,
           });
         }
         const bulkUpdates = accountUpdates.map((update) => ({
           updateOne: {
             filter: update.filter,
             update: update.update,
+            upsert: update.upsert,
           },
         }));
         await collection.bulkWrite(bulkUpdates);
