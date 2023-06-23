@@ -10,7 +10,9 @@
     "reward": "node index.js -r",
     "scan": "node index.js -s",
     "start": "node index.js",
-    "transfer": "node index.js -t"
+    "transfer": "node index.js -t",
+    "dev": "nodemon server.js",
+    "api": "node server.js"
   },
   "license": "MIT",
   "dependencies": {
@@ -18,8 +20,11 @@
     "chalk": "^5.2.0",
     "cli-table3": "^0.6.3",
     "commander": "^10.0.1",
+    "cors": "^2.8.5",
     "dotenv": "^16.1.4",
+    "express": "^4.18.2",
     "inquirer": "^9.2.7",
-    "mongodb": "^5.6.0"
+    "mongodb": "^5.6.0",
+    "nodemon": "^2.0.22"
   }
 }
