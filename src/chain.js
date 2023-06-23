@@ -27,6 +27,7 @@ class Chain {
     this.coins = 0;
     this.index = 0;
     this.oldIndex = 0;
+    this.failedAccountsTransfers = [];
     this.pendingTransactions = [];
     this.touchedAccounts = [];
     this.isBalanceAlreadySaved = false;
@@ -360,7 +361,7 @@ class Chain {
     const total = parseFloat(amount + fee);
     const currentBalance = parseFloat(this.balances[sender] || 0);
 
-    if (currentBalance < total && sender > 0) {
+    if (sender > 0 && (currentBalance < total || total > this.coins)) {
       log(
         chalk.yellow(
           `⚠️  ${sender}'s balance is too low. Current balance: ${currentBalance.toFixed(
@@ -368,6 +369,12 @@ class Chain {
           )}. Required amount: ${total.toFixed(2)}`
         )
       );
+
+      // save failed transfer account id
+      if (!this.failedAccountsTransfers.includes(sender)) {
+        this.failedAccountsTransfers.push(sender);
+      }
+
       return false;
     }
 
@@ -465,6 +472,11 @@ class Chain {
       const txIsCreated = await this.createRandomTransfer();
       if (txIsCreated) {
         i -= 1;
+      } else {
+        // all accounts balances are not enough to make transactions
+        if (this.failedAccountsTransfers.length === Object.keys(this.balances).length) {
+          break;
+        }
       }
     }
 
