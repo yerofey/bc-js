@@ -347,8 +347,6 @@ class Chain {
   }
 
   async saveTransaction(sender, receiver, amount, type) {
-    const newTxId = this.index + 1;
-    const currentDate = new Date();
     const fee = sender === 0 ? 0 : parseFloat((amount / 100) * this.feeAmount);
     const total = parseFloat(amount + fee);
     const currentBalance = parseFloat(this.balances[sender] || 0);
@@ -370,6 +368,8 @@ class Chain {
       return false;
     }
 
+    const newTxId = this.index + 1;
+
     // save tx
     const data = {
       id: newTxId,
@@ -378,7 +378,7 @@ class Chain {
       amount: parseFloat(amount),
       fee: parseFloat(fee),
       type: type || 'transfer',
-      timestamp: currentDate.getTime(),
+      timestamp: Date.now(),
     };
     let saved = false;
 
@@ -466,7 +466,10 @@ class Chain {
         i -= 1;
       } else {
         // all accounts balances are not enough to make transactions
-        if (this.failedAccountsTransfers.length === Object.keys(this.balances).length) {
+        if (
+          this.failedAccountsTransfers.length ===
+          Object.keys(this.balances).length
+        ) {
           break;
         }
       }
