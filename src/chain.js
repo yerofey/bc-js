@@ -239,15 +239,7 @@ class Chain {
 
     if (this.useDatabase) {
       try {
-        const collection = this.db.connection.collection(this.DB_TRANSACTIONS);
-        const result = await collection
-          .find()
-          .sort({ id: -1 })
-          .limit(1)
-          .toArray();
-        if (result.length > 0) {
-          txId = result[0].id;
-        }
+        txId = await this.db.getLastId(this.DB_TRANSACTIONS);
         this.dbCalls += 1;
       } catch (err) {
         log(chalk.red(`🚫 Failed to get last tx id: ${err}`));
