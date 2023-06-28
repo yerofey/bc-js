@@ -695,20 +695,20 @@ class Chain {
   }
 
   async eraseData() {
-    log(chalk.yellow(`⚠️ Erasing the chain data`));
+    log(chalk.yellow(`⚠️  Erasing the chain data`));
 
     try {
       const input = await inquirer.prompt([
         {
           type: 'confirm',
           name: 'sure',
-          message: `⁉️ Do you really want to erase the data?`,
+          message: `❓  Do you really want to erase the data?`,
           default: true,
         },
       ]);
 
       if (input.sure) {
-        log(chalk.gray(`🗑 Erasing DB data...`));
+        log(chalk.gray(`🗑  Erasing DB data...`));
 
         await this.db.clear(this.DB_ACCOUNTS);
         this.dbCalls += 1;
