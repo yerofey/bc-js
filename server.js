@@ -28,6 +28,8 @@ app.get('/accounts', async (req, res) => {
     res.json(sanitizedAccounts);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch accounts' });
+  } finally {
+    await db.disconnect();
   }
 });
 
@@ -45,6 +47,8 @@ app.get('/accounts/:id', async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch account' });
+  } finally {
+    await db.disconnect();
   }
 });
 
@@ -97,6 +101,8 @@ app.post('/accounts/create', async (req, res) => {
     }
   } catch (err) {
     res.status(500).json({ error: 'Failed to create account' });
+  } finally {
+    await db.disconnect();
   }
 });
 
@@ -116,6 +122,8 @@ app.get('/data/items', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err });
+  } finally {
+    await db.disconnect();
   }
 });
 
